@@ -80,6 +80,7 @@ Application List
 --------------------
 
 - [**generic_receiver**](generic_receiver/README.md) - A demo for a receiver application that uses Rivermax Generic API
+- [**rivermax_player**](rivermax_player/README.md) - A demo for a sender application that sends several streams of different types (e.g. video, audio, ancillary)
 
 Issues and Contribution
 --------------------
