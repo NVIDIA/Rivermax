@@ -81,6 +81,7 @@ Application List
 
 - [**generic_receiver**](generic_receiver/README.md) - A demo for a receiver application that uses Rivermax Generic API
 - [**rivermax_player**](rivermax_player/README.md) - A demo for a sender application that sends several streams of different types (e.g. video, audio, ancillary)
+- [**doca_rmax_rx_perf**](doca_rmax_rx_perf/README.md) - An RX performance measurement application to be used with the NVIDIA DOCA RMAX library.
 
 Issues and Contribution
 --------------------
