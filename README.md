@@ -58,7 +58,7 @@ $ sudo pip<latest-version> install cmake
 
 Each code example contains its build instructions in the respective folder's `README.md` file.
 
-Some applications can be built with CUDA support to demonstrate GPU utilization. The following boolean build-parameters are supported:
+Some applications (e.g. `generic_receiver`) can be built with CUDA support to demonstrate GPU utilization. The following boolean build-parameters are supported:
 
 - `RIVERMAX_ENABLE_CUDA` - when set, this flag enables integration with CUDA
 - `RIVERMAX_ENABLE_TEGRA` - this flag shall be set along with `RIVERMAX_ENABLE_CUDA` when building for TEGRA-family SoC (e.g. NVIDIA Jetson AGX Xavier).
@@ -78,6 +78,8 @@ Each application or sample code provides its usage instructions.
 
 Application List
 --------------------
+
+- [**generic_receiver**](generic_receiver/README.md) - A demo for a receiver application that uses Rivermax Generic API
 
 Issues and Contribution
 --------------------
