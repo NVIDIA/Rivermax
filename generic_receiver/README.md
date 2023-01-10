@@ -57,7 +57,7 @@ To see all command-line options please invoke `generic_receiver --help`.
 
 ### Example #1: _Receiving a simple stream using a specific core affinity_
 
-This example demonstrates receiving a simple stream sent from a sender with source port 192.168.1.3.
+This example demonstrates receiving a simple stream sent from a sender with source address 192.168.1.3.
 The stream is received via the NIC which has local IP 192.168.1.2. The multicast address and UDP ports
 on which the stream is being received are 239.5.5.5:56789.
 The application is set to run on cores #2, #3 and #4.
