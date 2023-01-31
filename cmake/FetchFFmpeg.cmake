@@ -36,7 +36,6 @@ endif()
 
 include(FetchContent)
 FetchContent_Declare(FFmpeg
-  FIND_PACKAGE_ARGS
   URL  "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${RIVERMAX_FFMPEG_RELEASE}"
   SOURCE_DIR "${PROJECT_BINARY_DIR}/.local"  
 )
