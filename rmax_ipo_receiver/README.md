@@ -13,14 +13,14 @@ purpose are disclaimed.
 ### Details
 
 * Release date: 31-01-2023
-* Update date: 31-01-2023
-* Version: 1.21.10
+* Update date: 16-05-2023
+* Version: 1.30.16
 
 ### Tested on
 
-* Rivermax: 1.21.10
-* OFED: 5.9-0.5.6.0
-* WinOF2: 3.20.50010
+* Rivermax: 1.30.16
+* OFED: 23.04-0.5.3.3
+* WinOF2: 23.4.26054
 * OS:
   * Ubuntu 20.04
   * Ubuntu 22.04

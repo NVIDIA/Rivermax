@@ -142,24 +142,6 @@ macro(find_component _component _library)
   determine_component_version(${_component} ${_component}_LIBRARY)
 endmacro()
 
-#! calculate_rivermax_version : calculate the official version of the Rivermax library
-#
-# The actual value of the version of the library is not explicitly stored within its
-# files. However, it can be calculated based on release and build numbers.
-#
-# \arg:_release_number the release number of the API
-# \arg:_build_number   the build number of the API
-# 
-function(calculate_rivermax_version _release_number _build_number _rivermax_version)
-  set(Rivermax_VERSION_MAJOR 1)
-  if(_release_number LESS 13)
-    math(EXPR Rivermax_VERSION_MINOR "${_release_number} - 1" OUTPUT_FORMAT DECIMAL)
-  else()
-    math(EXPR Rivermax_VERSION_MINOR "20 + ${_release_number} - 13" OUTPUT_FORMAT DECIMAL)
-  endif()
-  set(${_rivermax_version} "${Rivermax_VERSION_MAJOR}.${Rivermax_VERSION_MINOR}.${_build_number}" PARENT_SCOPE)
-endfunction()
-
 #------------------------------------------------------------------------------
 
 if (WIN32)
@@ -174,23 +156,22 @@ if (WIN32)
   endif()
 else()
   find_component(DPCP dpcp)
-  find_component(VMA vma)
 endif()
 
 # Identify Rivermax files and version
-find_library_files(rivermax_api.h rivermax Rivermax_INCLUDE_DIR Rivermax_LIBRARY)
+find_library_files(rivermax_defs.h rivermax Rivermax_INCLUDE_DIR Rivermax_LIBRARY)
 if (Rivermax_INCLUDE_DIR)
-  file(STRINGS ${Rivermax_INCLUDE_DIR}/rivermax_api.h _RMAX_DEFS REGEX "^#define[ \t]+RMAX_(RELEASE_VERSION|BUILD)[ \t]")
-  if(_RMAX_DEFS)
-    foreach(_version_item "RELEASE_VERSION" "BUILD")
-      string(REGEX REPLACE ".*${_version_item}[ \t]+([0-9]+).*" "\\1" Rivermax_${_version_item} "${_RMAX_DEFS}")
+  file(STRINGS ${Rivermax_INCLUDE_DIR}/rivermax_defs.h _RMX_DEFS REGEX "^#define[ \t]+RMX_VERSION_(MAJOR|MINOR|PATCH)[ \t]")
+  if(_RMX_DEFS)
+    foreach(_version_item "MAJOR" "MINOR" "PATCH")
+      string(REGEX REPLACE ".*${_version_item}[ \t]+([0-9]+).*" "\\1" Rivermax_VERSION_${_version_item} "${_RMX_DEFS}")
     endforeach()
-    calculate_rivermax_version("${Rivermax_RELEASE_VERSION}" "${Rivermax_BUILD}" Rivermax_VERSION)
+    set(Rivermax_VERSION "${Rivermax_VERSION_MAJOR}.${Rivermax_VERSION_MINOR}.${Rivermax_VERSION_PATCH}")
     mark_as_advanced(Rivermax_VERSION Rivermax_VERSION_MAJOR Rivermax_VERSION_MINOR Rivermax_VERSION_PATCH)
   else()
     message(WARNING "Failed to determine the version of Rivermax!")
   endif()
-  unset(_RMAX_DEFS)
+  unset(_RMX_DEFS)
 endif()
 
 # Handle findings

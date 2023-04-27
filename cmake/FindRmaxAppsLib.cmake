@@ -52,7 +52,7 @@ include(FindPackageHandleStandardArgs)
 include(RtThread)
 
 # Define Rivermax as component of RmaxAppsLib
-find_package(Rivermax 1.21.10)
+find_package(Rivermax 1.30.16)
 set(RmaxAppsLib_Rivermax_FOUND Rivermax_FOUND)
 set(RmaxAppsLib_FIND_REQUIRED_Rivermax TRUE)
 list(APPEND RmaxAppsLib_FIND_COMPONENTS Rivermax)
