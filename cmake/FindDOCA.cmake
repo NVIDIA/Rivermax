@@ -31,9 +31,6 @@ This module provides the following imported targets, if found:
 ``DOCA::doca``, ``DOCA::doca-rmax``
   The libraries comprising the DOCA SDK Toolkit (DOCA 2.0 and later).
 
-``DOCA::doca-common``, ``DOCA::doca-argp``, ``DOCA::doca-rmax``
-  The libraries comprising the DOCA SDK Toolkit (DOCA < 2.0).
-
 Result Variables
 ^^^^^^^^^^^^^^^^
 
@@ -61,28 +58,14 @@ endif()
 
 set(DOCA_TARGETS)
 
-# Try to find main DOCA package
-pkg_check_modules(DOCA_doca doca)
-pkg_check_modules(DOCA_doca-common doca-common)
-
-# Determine the layout version of the pakage
-if (DOCA_doca_FOUND)
-    set(DOCA_VERSION "${DOCA_doca_VERSION}")
-    message(STATUS "Found DOCA ${DOCA_VERSION} (layout version 2.0 or later)")
-    set(DOCA_DEFAULT_COMPONENTS doca doca-rmax)
-elseif (DOCA_doca-common_FOUND)
-    set(DOCA_VERSION "${DOCA_doca-common_VERSION}")
-    message(STATUS "Found DOCA ${DOCA_VERSION} (layout version 1.5)")
-    set(DOCA_DEFAULT_COMPONENTS doca-common doca-argp doca-rmax)
-endif()
 # Go for default components, if it's not explicitly specified
 if(NOT DOCA_FIND_COMPONENTS)
-    set(DOCA_FIND_COMPONENTS ${DOCA_DEFAULT_COMPONENTS})
+    set(DOCA_FIND_COMPONENTS doca doca-rmax)
 endif()
 
 foreach(_component ${DOCA_FIND_COMPONENTS})
   # Attempt to find the component with PKG-Config
-  pkg_check_modules(DOCA_${_component} ${_component} IMPORTED_TARGET)
+  pkg_check_modules(DOCA_${_component} ${_component} IMPORTED_TARGET GLOBAL)
   if (DOCA_${_component}_FOUND)
     add_library(DOCA::${_component} ALIAS PkgConfig::DOCA_${_component})
     list(APPEND DOCA_TARGETS DOCA::${_component})
@@ -95,6 +78,7 @@ endforeach()
 
 include(FindPackageHandleStandardArgs)
 
+set(DOCA_VERSION "${DOCA_doca_VERSION}")
 find_package_handle_standard_args(DOCA
   VERSION_VAR DOCA_VERSION
   REQUIRED_VARS DOCA_VERSION

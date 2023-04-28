@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cmake_minimum_required(VERSION 3.17...3.24 FATAL_ERROR)
+cmake_minimum_required(VERSION 3.16...3.24 FATAL_ERROR)
 list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../cmake)
 
 project(DocaRmaxRXPerf)
@@ -33,6 +33,6 @@ target_sources(doca_rmax_rx_perf
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/doca_rmax_rx_perf.c
 )
 
-find_package(DOCA 1.5.0042 REQUIRED)
-target_link_libraries(doca_rmax_rx_perf PRIVATE apps_common_base DOCA::DOCA)
+find_package(DOCA 2.0.2000 REQUIRED)
+target_link_libraries(doca_rmax_rx_perf PRIVATE apps_common_base DOCA::DOCA DOCA::doca-rmax)
 
