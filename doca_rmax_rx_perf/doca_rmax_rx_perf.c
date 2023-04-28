@@ -33,7 +33,7 @@
 DOCA_LOG_REGISTER(DOCA_RMAX_PERF);
 
 #define APP_NAME "doca_rmax_perf"
-#define APP_VERSION "1.0"
+#define APP_VERSION "1.1"
 
 #define MAX_BUFFERS 2
 
@@ -826,6 +826,13 @@ struct doca_dev *open_device(struct in_addr *dev_ip)
 	return dev;
 }
 
+void free_callback(void *addr, size_t len, void *opaque)
+{
+	(void)len;
+	(void)opaque;
+	free(addr);
+}
+
 doca_error_t init_globals(struct perf_app_config *config, struct doca_dev *dev, struct globals *globals)
 {
 	doca_error_t ret;
@@ -837,24 +844,19 @@ doca_error_t init_globals(struct perf_app_config *config, struct doca_dev *dev, 
 		DOCA_LOG_ERR("Error creating mmap: %s", doca_get_error_string(ret));
 		return ret;
 	}
-	ret = doca_mmap_set_max_num_chunks(globals->mmap, num_buffers);
-	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Error setting number of chunks: %s", doca_get_error_string(ret));
-		return ret;
-	}
-	ret = doca_mmap_start(globals->mmap);
-	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Error starting mmap: %s", doca_get_error_string(ret));
-		return ret;
-	}
 	ret = doca_mmap_dev_add(globals->mmap, dev);
 	if (ret != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Error adding device to mmap: %s", doca_get_error_string(ret));
 		return ret;
 	}
-	/* linked list extension must be enabled to chain buffers */
+	/* set mmap free callback */
+	ret = doca_mmap_set_free_cb(globals->mmap, free_callback, NULL);
+	if (ret != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to set mmap free callback: %s", doca_get_error_string(ret));
+		return ret;
+	}
 	ret = doca_buf_inventory_create(NULL, num_buffers,
-			DOCA_BUF_EXTENSION_LINKED_LIST, &globals->inventory);
+			DOCA_BUF_EXTENSION_NONE, &globals->inventory);
 	if (ret != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Error creating inventory: %s", doca_get_error_string(ret));
 		return ret;
@@ -912,13 +914,6 @@ bool destroy_globals(struct globals *globals, struct doca_dev *dev)
 	}
 
 	return is_ok;
-}
-
-void free_callback(void *addr, size_t len, void *opaque)
-{
-	(void)len;
-	(void)opaque;
-	free(addr);
 }
 
 doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
@@ -985,8 +980,12 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 
 	/* query buffer size */
 	ret = doca_rmax_in_stream_get_memblk_size(data->stream, size);
+	if (ret != DOCA_SUCCESS)
+		return ret;
 	/* query stride size */
 	ret = doca_rmax_in_stream_get_memblk_stride_size(data->stream, data->stride_size);
+	if (ret != DOCA_SUCCESS)
+		return ret;
 
 	/* allocate memory */
 	if (num_buffers == 1) {
@@ -995,16 +994,27 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 		ptr[0] = aligned_alloc(page_size, size[0]); /*< header */
 		ptr[1] = aligned_alloc(page_size, size[1]); /*< data */
 	}
+	/* add allocated memory to mmap */
+	for (size_t i = 0; i < num_buffers; ++i) {
+		ret = doca_mmap_set_memrange(globals->mmap, ptr[i], size[i]);
+		if (ret != DOCA_SUCCESS) {
+			DOCA_LOG_ERR("Failed to set mmap memory range, ptr[%zu] %p, size %zu: %s",
+				i, ptr[i], size[i], doca_get_error_string(ret));
+			return ret;
+		}
+	}
+	/* start mmap */
+	ret = doca_mmap_start(globals->mmap);
+	if (ret != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Error starting mmap: %s", doca_get_error_string(ret));
+		return ret;
+	}
 	/* build memory buffer chain */
 	for (size_t i = 0; i < num_buffers; ++i) {
 		struct doca_buf *buf;
 
 		if (ptr[i] == NULL)
 			return DOCA_ERROR_NO_MEMORY;
-		ret = doca_mmap_populate(globals->mmap, ptr[i], size[i],
-				page_size, free_callback, NULL);
-		if (ret != DOCA_SUCCESS)
-			return ret;
 		ret = doca_buf_inventory_buf_by_addr(globals->inventory,
 				globals->mmap, ptr[i], size[i], &buf);
 		if (ret != DOCA_SUCCESS)
@@ -1246,6 +1256,7 @@ void handle_error(const struct doca_rmax_stream_error *err)
 
 bool run_recv_loop(const struct perf_app_config *config, struct globals *globals, struct stream_data *data)
 {
+	struct doca_rmax_job_rx_data job;
 	int ret;
 
 	ret = clock_gettime(CLOCK_MONOTONIC_RAW, &data->start);
@@ -1254,18 +1265,37 @@ bool run_recv_loop(const struct perf_app_config *config, struct globals *globals
 		return false;
 	}
 
+	/* Prepare initial job */
+	job.base.ctx = doca_rmax_in_stream_as_ctx(data->stream);
+	job.base.flags = 0;
+	job.base.type = DOCA_RMAX_ACTION_TYPE_RX_DATA;
+	job.base.user_data.u64 = 0;
+
+	/* Submit initial job */
+	ret = doca_workq_submit(globals->wq, &job.base);
+	if (ret != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to submit job: %s", doca_get_error_string(ret));
+		return false;
+	}
+
 	while (true) {
 		struct doca_event ev;
 		uint32_t flags = 0;
-		doca_error_t ret;
 
 		ret = doca_workq_progress_retrieve(globals->wq, &ev, flags);
 
 		switch (ret) {
 		case DOCA_SUCCESS:
-			if ((enum doca_rmax_action_type)(ev.type) == DOCA_RMAX_ACTION_TYPE_RX_DATA)
+			if ((enum doca_rmax_action_type)(ev.type) == DOCA_RMAX_ACTION_TYPE_RX_DATA) {
 				handle_completion((struct doca_rmax_in_stream_completion *)ev.result.ptr,
 						data, config->dump);
+				/* Submit job to receive next chunk of data */
+				ret = doca_workq_submit(globals->wq, &job.base);
+				if (ret != DOCA_SUCCESS) {
+					DOCA_LOG_ERR("Failed to submit job: %s", doca_get_error_string(ret));
+					break;
+				}
+			}
 			break;
 		case DOCA_ERROR_AGAIN:
 			/* no data available */
@@ -1300,6 +1330,14 @@ int main(int argc, char **argv)
 	struct perf_app_config config;
 	doca_error_t ret;
 	int exit_code = EXIT_SUCCESS;
+	struct doca_logger_backend *stdout_logger = NULL;
+
+	/* Create a logger backend that prints to the standard output */
+	ret = doca_log_create_file_backend(stdout, &stdout_logger);
+	if (ret != DOCA_SUCCESS) {
+		fprintf(stderr, "Logger initialization failed: %s\n", doca_get_error_string(ret));
+		return EXIT_FAILURE;
+	}
 
 	init_config(&config);
 	ret = doca_argp_init(APP_NAME, &config);
@@ -1330,8 +1368,8 @@ int main(int argc, char **argv)
 		struct doca_dev *clock_dev = NULL;
 
 		if (!mandatory_args_set(&config)) {
-			doca_argp_usage();
 			DOCA_LOG_ERR("Not all mandatory arguments were set");
+			doca_argp_usage();
 			return EXIT_FAILURE;
 		}
 

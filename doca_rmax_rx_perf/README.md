@@ -10,12 +10,12 @@ but not limited to, the implied warranties of merchantability and fitness for a 
 purpose are disclaimed.
 
 * Release date: 27-Oct-2022
-* Update date: 30-Feb-2023
-* Version: 1.0
+* Update date: 28-Apr-2023
+* Version: 1.1
 * Compatibility:
-  * Rivermax: 1.21.10
-  * OFED: 5.9-0.5.6.0
-  * DOCA: 1.5, 2.0
+  * Rivermax: 1.30.16
+  * OFED: 23.04-0.5.3.3
+  * DOCA: 2.0.2
   * OS: Ubuntu 20.04
   * Hardware: BlueField 2
 
@@ -27,12 +27,12 @@ purpose are disclaimed.
 
 ## Prerequisites
 
-* [NVIDIA DOCA SDK](https://developer.nvidia.com/networking/doca) 1.5 or 2.0.
+* [NVIDIA DOCA SDK](https://developer.nvidia.com/networking/doca) 2.0.2.
   See [Installation guide](https://docs.nvidia.com/doca/sdk/installation-guide/index.html).
 * NVIDIA DOCA RMAX library. Can be installed by SDK Manager (see DOCA SDK
   installation guide) or manually by installing `doca-rmax-libs` and
   `libdoca-rmax-libs-dev`.
-* [CMake](https://cmake.org) 3.6 or later.
+* [CMake](https://cmake.org) 3.16 or later.
 
 ## Command-line parameters
 
@@ -84,16 +84,11 @@ Enjoy the `doca_rmax_rx_perf` binary in directory `build`.
 Was tested in NVIDIA lab:
 * Card: (MT41686 - MBF2M516A-CENOT) BlueField-2 DPU 100GbE Dual-Port QSFP56, Crypto Disabled, 16GB on-board DDR, 1GbE OOB management, Tall Bracket
 * FW: 24.35.0314
-* DOCA 1.5:
-    * Rivermax 1.20.9
-    * OFED (on BF): MLNX_OFED_LINUX-5.8-0.3.3.0
-    * DOCA: 1.5.0041-1
-    * BFB: DOCA_1.5.0_BSP_3.9.3_Ubuntu_20.04-5.20221003
-* DOCA 2.0:
-    * Rivermax: 1.21.10
-    * OFED (on BF): MLNX_OFED_LINUX-5.9-0.5.6.0
-    * DOCA: 2.0
-    * BFB: DOCA_2.0.0_BSP_4.0.0_Ubuntu_20.04-1.20230209
+* DOCA 2.0.2:
+    * Rivermax: 1.30.16
+    * OFED (on BF): MLNX_OFED_LINUX-23.04-0.5.3.3
+    * DOCA: 2.0.2027-1
+    * BFB: DOCA_2.0.2_BSP_4.0.2_Ubuntu_20.04-2.20230424.bfb
 
 ## Limitations
 
