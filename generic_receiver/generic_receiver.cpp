@@ -74,26 +74,21 @@ int main(int argc, char *argv[])
     // Print the library and app version.
     const char *rmax_version = rmax_get_version_string();
     static std::string app_version =
-        std::to_string(RMAX_API_MAJOR) + std::string(".") +
-        std::to_string(RMAX_API_MINOR) + std::string(".") +
-        std::to_string(RMAX_RELEASE_VERSION) + std::string(".") +
-        std::to_string(RMAX_BUILD);
+        std::to_string(RMX_VERSION_MAJOR) + std::string(".") +
+        std::to_string(RMX_VERSION_MINOR) + std::string(".") +
+        std::to_string(RMX_VERSION_PATCH);
     std::cout << "#########################################\n";
     std::cout << "## Rivermax library version:    " << rmax_version << "\n";
     std::cout << "## Application version:         " << app_version << "\n";
     std::cout << "#########################################\n";
 
     // Verify Rivermax library version matches (or is compatible) with this application.
-    unsigned int api_major;
-    unsigned int api_minor;
-    unsigned int release;
-    unsigned int build;
-    rmax_get_version(&api_major, &api_minor, &release, &build);
-    if (api_major != RMAX_API_MAJOR || api_minor < RMAX_API_MINOR) {
+    const rmx_version* version = rmx_get_version_numbers();
+    if (version->major != RMX_VERSION_MAJOR || version->minor < RMX_VERSION_MINOR) {
         std::cerr << "The current Rivermax version is not compatible with this application." << std::endl;
         exit(-1);
     }
-    if (api_minor > RMAX_API_MINOR || release != RMAX_RELEASE_VERSION || build != RMAX_BUILD) {
+    if (version->minor > RMX_VERSION_MINOR || version->patch != RMX_VERSION_PATCH) {
         std::cout << "WARNING!!! Rivermax and application versions are not aligned" << std::endl;
     }
 

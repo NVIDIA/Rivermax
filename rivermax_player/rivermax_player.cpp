@@ -2619,10 +2619,6 @@ static bool set_clock(rmax_clock_types clock_handler_type, std::vector<std::stri
 
 int main(int argc, char *argv[])
 {
-    unsigned int api_major;
-    unsigned int api_minor;
-    unsigned int release;
-    unsigned int build;
     int ret = 0;
 
     std::vector<std::string> sdp_files;
@@ -2756,10 +2752,10 @@ int main(int argc, char *argv[])
         }
     }
 
-    static std::string media_version = std::to_string(RMAX_API_MAJOR) + std::string(".") +
-                                       std::to_string(RMAX_API_MINOR)+ std::string(".") +
-                                       std::to_string(RMAX_RELEASE_VERSION) +
-                                       std::string(".") + std::to_string(RMAX_BUILD);
+    static std::string media_version =
+      std::to_string(RMX_VERSION_MAJOR) + std::string(".") +
+      std::to_string(RMX_VERSION_MINOR) + std::string(".") +
+      std::to_string(RMX_VERSION_PATCH);
 
     std::cout<<"#############################################\n";
     std::cout<<"## Rivermax library version:    " << rmax_version << std::endl;
@@ -2767,12 +2763,12 @@ int main(int argc, char *argv[])
     std::cout<<"#############################################\n";
 
     /* Verify version mismatch */
-    rmax_get_version(&api_major, &api_minor, &release, &build);
-    if (api_major != RMAX_API_MAJOR || api_minor < RMAX_API_MINOR) {
+    const rmx_version* version = rmx_get_version_numbers();
+    if (version->major != RMX_VERSION_MAJOR || version->minor < RMX_VERSION_MINOR) {
       std::cerr << "The current Rivermax version is not compatible with this version of rivermax player\n";
       return -1;
     }
-    if (api_minor > RMAX_API_MINOR || release != RMAX_RELEASE_VERSION || build != RMAX_BUILD) {
+    if (version->minor > RMX_VERSION_MINOR || version->patch != RMX_VERSION_PATCH) {
         void *ctx;
 
         ctx = color_set(COLOR_RED);
