@@ -28,6 +28,7 @@
 #include <doca_buf_inventory.h>
 #include <doca_log.h>
 #include <doca_mmap.h>
+#include <doca_pe.h>
 #include <doca_rmax.h>
 
 DOCA_LOG_REGISTER(DOCA_RMAX_PERF);
@@ -71,7 +72,7 @@ struct perf_app_config {
 struct globals {
 	struct doca_mmap *mmap;
 	struct doca_buf_inventory *inventory;
-	struct doca_workq *wq;
+	struct doca_pe *pe;
 };
 
 struct stream_data {
@@ -85,7 +86,13 @@ struct stream_data {
 	/* statistics */
 	size_t recv_pkts;
 	size_t recv_bytes;
+	/* control flow */
+	bool dump;
+	bool run_recv_loop;
 };
+
+void handle_completion(struct doca_rmax_in_stream_event_rx_data *event_rx_data, union doca_data event_user_data);
+void handle_error(struct doca_rmax_in_stream_event_rx_data *event_rx_data, union doca_data event_user_data);
 
 noreturn
 doca_error_t print_version(void *param, void *config)
@@ -399,7 +406,7 @@ bool register_argp_params(void)
 	/* --list flag */
 	ret = doca_argp_param_create(&list_flag);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_long_name(list_flag, "list");
@@ -408,14 +415,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(list_flag, DOCA_ARGP_TYPE_BOOLEAN);
 	ret = doca_argp_register_param(list_flag);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -t,--stream-type parameter */
 	ret = doca_argp_param_create(&type_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(type_param, "t");
@@ -425,14 +432,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(type_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(type_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* --scatter-type parameter */
 	ret = doca_argp_param_create(&scatter_type_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_long_name(scatter_type_param, "scatter-type");
@@ -441,14 +448,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(scatter_type_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(scatter_type_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* --tstamp-format parameter */
 	ret = doca_argp_param_create(&tstamp_format_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_long_name(tstamp_format_param, "tstamp-format");
@@ -457,14 +464,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(tstamp_format_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(tstamp_format_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -i,--interface-ip parameter */
 	ret = doca_argp_param_create(&dev_ip_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(dev_ip_param, "i");
@@ -474,14 +481,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(dev_ip_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(dev_ip_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -m,--multicast-dst parameter */
 	ret = doca_argp_param_create(&dst_ip_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(dst_ip_param, "m");
@@ -491,14 +498,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(dst_ip_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(dst_ip_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -s,--multicast-src parameter */
 	ret = doca_argp_param_create(&src_ip_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(src_ip_param, "s");
@@ -508,14 +515,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(src_ip_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(src_ip_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -p,--port parameter */
 	ret = doca_argp_param_create(&dst_port_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(dst_port_param, "p");
@@ -525,48 +532,48 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(dst_port_param, DOCA_ARGP_TYPE_INT);
 	ret = doca_argp_register_param(dst_port_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -r,--header-size parameter */
 	ret = doca_argp_param_create(&hdr_size_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(hdr_size_param, "r");
 	doca_argp_param_set_long_name(hdr_size_param, "header-size");
-	doca_argp_param_set_description(hdr_size_param, "Header size (default 0)");
+	doca_argp_param_set_description(hdr_size_param, "Packet's application header size (default 0)");
 	doca_argp_param_set_callback(hdr_size_param, set_hdr_size_param);
 	doca_argp_param_set_type(hdr_size_param, DOCA_ARGP_TYPE_INT);
 	ret = doca_argp_register_param(hdr_size_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -d,--data-size parameter */
 	ret = doca_argp_param_create(&data_size_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(data_size_param, "d");
 	doca_argp_param_set_long_name(data_size_param, "data-size");
-	doca_argp_param_set_description(data_size_param, "Data size (default 1500)");
+	doca_argp_param_set_description(data_size_param, "Packet's data size (default 1500)");
 	doca_argp_param_set_callback(data_size_param, set_data_size_param);
 	doca_argp_param_set_type(data_size_param, DOCA_ARGP_TYPE_INT);
 	ret = doca_argp_register_param(data_size_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -k,--packets parameter */
 	ret = doca_argp_param_create(&num_elements_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(num_elements_param, "k");
@@ -576,14 +583,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(num_elements_param, DOCA_ARGP_TYPE_INT);
 	ret = doca_argp_register_param(num_elements_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* -a,--cpu-affinity parameter */
 	ret = doca_argp_param_create(&cpu_affinity_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_short_name(cpu_affinity_param, "a");
@@ -593,7 +600,7 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(cpu_affinity_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(cpu_affinity_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
@@ -601,7 +608,7 @@ bool register_argp_params(void)
 	/* --clock-device parameter */
 	ret = doca_argp_param_create(&clock_ip_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_long_name(clock_ip_param, "clock-device");
@@ -610,7 +617,7 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(clock_ip_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(clock_ip_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 #else
@@ -622,7 +629,7 @@ bool register_argp_params(void)
 	/* --sleep parameter */
 	ret = doca_argp_param_create(&sleep_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_long_name(sleep_param, "sleep");
@@ -631,14 +638,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(sleep_param, DOCA_ARGP_TYPE_INT);
 	ret = doca_argp_register_param(sleep_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* --min parameter */
 	ret = doca_argp_param_create(&min_packets_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_long_name(min_packets_param, "min");
@@ -647,14 +654,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(min_packets_param, DOCA_ARGP_TYPE_INT);
 	ret = doca_argp_register_param(min_packets_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* --max parameter */
 	ret = doca_argp_param_create(&max_packets_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_long_name(max_packets_param, "max");
@@ -663,14 +670,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(max_packets_param, DOCA_ARGP_TYPE_INT);
 	ret = doca_argp_register_param(max_packets_param);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* --dump flag */
 	ret = doca_argp_param_create(&dump_flag);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
 		return false;
 	}
 	doca_argp_param_set_long_name(dump_flag, "dump");
@@ -679,14 +686,14 @@ bool register_argp_params(void)
 	doca_argp_param_set_type(dump_flag, DOCA_ARGP_TYPE_BOOLEAN);
 	ret = doca_argp_register_param(dump_flag);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
 		return false;
 	}
 
 	/* version callback */
 	ret = doca_argp_register_version_callback(print_version);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register version callback: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to register version callback: %s", doca_error_get_name(ret));
 		return false;
 	}
 
@@ -722,14 +729,14 @@ void list_devices(void)
 	uint32_t nb_devs;
 	doca_error_t ret;
 
-	ret = doca_devinfo_list_create(&devinfo, &nb_devs);
+	ret = doca_devinfo_create_list(&devinfo, &nb_devs);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to enumerate devices: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to enumerate devices: %s", doca_error_get_name(ret));
 		return;
 	}
 	printf("Iface\t\tIB dev\t\tBus ID\tIP addr\t\tPTP\n");
 	for (uint32_t i = 0; i < nb_devs; ++i) {
-		struct doca_pci_bdf dev_bus;
+		char dev_pci_addr[DOCA_DEVINFO_PCI_ADDR_SIZE];
 		char netdev[DOCA_DEVINFO_IFACE_NAME_SIZE];
 		char ibdev[DOCA_DEVINFO_IBDEV_NAME_SIZE];
 		uint8_t addr[4];
@@ -738,19 +745,19 @@ void list_devices(void)
 		/* get network interface name */
 		ret = doca_devinfo_get_iface_name(devinfo[i], netdev, sizeof(netdev));
 		if (ret != DOCA_SUCCESS) {
-			DOCA_LOG_WARN("Failed to get interface name for device %d: %s", i, doca_get_error_string(ret));
+			DOCA_LOG_WARN("Failed to get interface name for device %d: %s", i, doca_error_get_name(ret));
 			continue;
 		}
 		/* get Infiniband device name */
 		ret = doca_devinfo_get_ibdev_name(devinfo[i], ibdev, sizeof(ibdev));
 		if (ret != DOCA_SUCCESS) {
-			DOCA_LOG_WARN("Failed to get Infiniband name for device %d: %s", i, doca_get_error_string(ret));
+			DOCA_LOG_WARN("Failed to get Infiniband name for device %d: %s", i, doca_error_get_name(ret));
 			continue;
 		}
 		/* get PCI address */
-		ret = doca_devinfo_get_pci_addr(devinfo[i], &dev_bus);
+		ret = doca_devinfo_get_pci_addr_str(devinfo[i], dev_pci_addr);
 		if (ret != DOCA_SUCCESS) {
-			DOCA_LOG_WARN("Failed to get PCI address for device %d: %s", i, doca_get_error_string(ret));
+			DOCA_LOG_WARN("Failed to get PCI address for device %d: %s", i, doca_error_get_name(ret));
 			continue;
 		}
 		/* get IP address */
@@ -767,25 +774,25 @@ void list_devices(void)
 				has_ptp = false;
 				break;
 			default: {
-				DOCA_LOG_WARN("Failed to query PTP capability for device %d: %s", i, doca_get_error_string(ret));
+				DOCA_LOG_WARN("Failed to query PTP capability for device %d: %s", i, doca_error_get_name(ret));
 				continue;
 			}
 			}
 		} else {
 			memset(&addr, 0, sizeof(addr));
 			if (ret != DOCA_ERROR_NOT_FOUND)
-				DOCA_LOG_WARN("Failed to query IP address for device %d: %s", i, doca_get_error_string(ret));
+				DOCA_LOG_WARN("Failed to query IP address for device %d: %s", i, doca_error_get_name(ret));
 		}
 
-		printf("%-8s\t%-8s\t%x:%x.%x\t%03d.%03d.%03d.%03d\t%c\n",
+		printf("%-8s\t%-8s\t%-8s\t%03d.%03d.%03d.%03d\t%c\n",
 				netdev, ibdev,
-				dev_bus.bus, dev_bus.device, dev_bus.function,
+				dev_pci_addr,
 				addr[0], addr[1], addr[2], addr[3],
 				(has_ptp) ? 'y' : 'n');
 	}
-	ret = doca_devinfo_list_destroy(devinfo);
+	ret = doca_devinfo_destroy_list(devinfo);
 	if (ret != DOCA_SUCCESS)
-		DOCA_LOG_ERR("Failed to clean up devices list: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to clean up devices list: %s", doca_error_get_name(ret));
 }
 
 struct doca_dev *open_device(struct in_addr *dev_ip)
@@ -797,9 +804,9 @@ struct doca_dev *open_device(struct in_addr *dev_ip)
 	struct in_addr addr;
 	struct doca_dev *dev = NULL;
 
-	ret = doca_devinfo_list_create(&devinfo, &nb_devs);
+	ret = doca_devinfo_create_list(&devinfo, &nb_devs);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to enumerate devices: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to enumerate devices: %s", doca_error_get_name(ret));
 		return NULL;
 	}
 	for (uint32_t i = 0; i < nb_devs; ++i) {
@@ -815,13 +822,13 @@ struct doca_dev *open_device(struct in_addr *dev_ip)
 	if (found_devinfo) {
 		ret = doca_dev_open(found_devinfo, &dev);
 		if (ret != DOCA_SUCCESS)
-			DOCA_LOG_WARN("Error opening network device: %s", doca_get_error_string(ret));
+			DOCA_LOG_WARN("Error opening network device: %s", doca_error_get_name(ret));
 	} else
 		DOCA_LOG_ERR("Device not found");
 
-	ret = doca_devinfo_list_destroy(devinfo);
+	ret = doca_devinfo_destroy_list(devinfo);
 	if (ret != DOCA_SUCCESS)
-		DOCA_LOG_WARN("Failed to clean up devices list: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Failed to clean up devices list: %s", doca_error_get_name(ret));
 
 	return dev;
 }
@@ -839,37 +846,36 @@ doca_error_t init_globals(struct perf_app_config *config, struct doca_dev *dev, 
 	size_t num_buffers = (config->hdr_size > 0) ? 2 : 1;
 
 	/* create memory-related DOCA objects */
-	ret = doca_mmap_create(NULL, &globals->mmap);
+	ret = doca_mmap_create(&globals->mmap);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Error creating mmap: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Error creating mmap: %s", doca_error_get_name(ret));
 		return ret;
 	}
-	ret = doca_mmap_dev_add(globals->mmap, dev);
+	ret = doca_mmap_add_dev(globals->mmap, dev);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Error adding device to mmap: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Error adding device to mmap: %s", doca_error_get_name(ret));
 		return ret;
 	}
 	/* set mmap free callback */
 	ret = doca_mmap_set_free_cb(globals->mmap, free_callback, NULL);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to set mmap free callback: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to set mmap free callback: %s", doca_error_get_name(ret));
 		return ret;
 	}
-	ret = doca_buf_inventory_create(NULL, num_buffers,
-			DOCA_BUF_EXTENSION_NONE, &globals->inventory);
+	ret = doca_buf_inventory_create(num_buffers, &globals->inventory);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Error creating inventory: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Error creating inventory: %s", doca_error_get_name(ret));
 		return ret;
 	}
 	ret = doca_buf_inventory_start(globals->inventory);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Error starting inventory: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Error starting inventory: %s", doca_error_get_name(ret));
 		return ret;
 	}
 
-	ret = doca_workq_create(1, &globals->wq);
+	ret = doca_pe_create(&globals->pe);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Error destroying workq: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Error creating progress engine: %s", doca_error_get_name(ret));
 		return ret;
 	}
 
@@ -881,35 +887,35 @@ bool destroy_globals(struct globals *globals, struct doca_dev *dev)
 	doca_error_t ret;
 	bool is_ok = true;
 
-	ret = doca_workq_destroy(globals->wq);
+	ret = doca_pe_destroy(globals->pe);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error destroying workq: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error destroying progress engine: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 	ret = doca_buf_inventory_stop(globals->inventory);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error stopping inventory: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error stopping inventory: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 	ret = doca_buf_inventory_destroy(globals->inventory);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error destroying inventory: %s", doca_get_error_string(ret));
-		is_ok = false;
-	}
-	ret = doca_mmap_dev_rm(globals->mmap, dev);
-	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error disconnecting device from mmap: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error destroying inventory: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 	ret = doca_mmap_stop(globals->mmap);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error stopping mmap: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error stopping mmap: %s", doca_error_get_name(ret));
+		is_ok = false;
+	}
+	ret = doca_mmap_rm_dev(globals->mmap, dev);
+	if (ret != DOCA_SUCCESS) {
+		DOCA_LOG_WARN("Error disconnecting device from mmap: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 	/* will also free all allocated memory via callback */
 	ret = doca_mmap_destroy(globals->mmap);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error destroying mmap: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error destroying mmap: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 
@@ -924,9 +930,20 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 	size_t num_buffers;
 	size_t size[MAX_BUFFERS];
 	void *ptr[MAX_BUFFERS];
+	union doca_data event_user_data;
+	char *ptr_memory = NULL;
+
+	memset (&size, 0, sizeof(size));
 
 	/* create stream object */
-	ret = doca_rmax_in_stream_create(&data->stream);
+	ret = doca_rmax_in_stream_create(dev, &data->stream);
+	if (ret != DOCA_SUCCESS)
+		return ret;
+
+	/* Register Rx data event handlers */
+	event_user_data.ptr = (void *)data;
+	ret = doca_rmax_in_stream_event_rx_data_register(data->stream, event_user_data, handle_completion,
+							 handle_error);
 	if (ret != DOCA_SUCCESS)
 		return ret;
 
@@ -973,11 +990,6 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 	if (ret != DOCA_SUCCESS)
 		return ret;
 
-	/* connect stream to device */
-	ret = doca_ctx_dev_add(doca_rmax_in_stream_as_ctx(data->stream), dev);
-	if (ret != DOCA_SUCCESS)
-		return ret;
-
 	/* query buffer size */
 	ret = doca_rmax_in_stream_get_memblk_size(data->stream, size);
 	if (ret != DOCA_SUCCESS)
@@ -988,34 +1000,40 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 		return ret;
 
 	/* allocate memory */
-	if (num_buffers == 1) {
-		ptr[0] = aligned_alloc(page_size, size[0]);
-	} else {
-		ptr[0] = aligned_alloc(page_size, size[0]); /*< header */
-		ptr[1] = aligned_alloc(page_size, size[1]); /*< data */
+	ptr_memory = aligned_alloc(page_size, size[0] + size[1]);
+	if (ptr_memory == NULL) {
+		DOCA_LOG_ERR("Failed to allocate memory size: %zu", size[0] + size[1]);
+		return DOCA_ERROR_NO_MEMORY;
 	}
-	/* add allocated memory to mmap */
-	for (size_t i = 0; i < num_buffers; ++i) {
-		ret = doca_mmap_set_memrange(globals->mmap, ptr[i], size[i]);
-		if (ret != DOCA_SUCCESS) {
-			DOCA_LOG_ERR("Failed to set mmap memory range, ptr[%zu] %p, size %zu: %s",
-				i, ptr[i], size[i], doca_get_error_string(ret));
-			return ret;
-		}
-	}
-	/* start mmap */
-	ret = doca_mmap_start(globals->mmap);
+
+	ret = doca_mmap_set_memrange(globals->mmap, ptr_memory, size[0] + size[1]);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Error starting mmap: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to set mmap memory range, %p, size %zu: %s",
+			ptr_memory, size[0] + size[1], doca_error_get_name(ret));
 		return ret;
 	}
+
+        /* start mmap */
+	ret = doca_mmap_start(globals->mmap);
+	if (ret != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Error starting mmap: %s", doca_error_get_name(ret));
+		return ret;
+	}
+
+	if (num_buffers == 1) {
+		ptr[0] = ptr_memory;
+	} else {
+		ptr[0] = ptr_memory;            /* header */
+		ptr[1] = ptr_memory + size[0];  /* data */
+	}
+
 	/* build memory buffer chain */
 	for (size_t i = 0; i < num_buffers; ++i) {
 		struct doca_buf *buf;
 
 		if (ptr[i] == NULL)
 			return DOCA_ERROR_NO_MEMORY;
-		ret = doca_buf_inventory_buf_by_addr(globals->inventory,
+		ret = doca_buf_inventory_buf_get_by_addr(globals->inventory,
 				globals->mmap, ptr[i], size[i], &buf);
 		if (ret != DOCA_SUCCESS)
 			return ret;
@@ -1023,7 +1041,7 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 			data->buffer = buf;
 		else {
 			/* chain buffers */
-			ret = doca_buf_list_chain(data->buffer, buf);
+			ret = doca_buf_chain_list(data->buffer, buf);
 			if (ret != DOCA_SUCCESS)
 				return ret;
 		}
@@ -1033,12 +1051,13 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 	if (ret != DOCA_SUCCESS)
 		return ret;
 
-	/* start stream */
-	ret = doca_ctx_start(doca_rmax_in_stream_as_ctx(data->stream));
+	/* connect to progress engine */
+	ret = doca_pe_connect_ctx(globals->pe, doca_rmax_in_stream_as_ctx(data->stream));
 	if (ret != DOCA_SUCCESS)
 		return ret;
-	/* attach to workq */
-	ret = doca_ctx_workq_add(doca_rmax_in_stream_as_ctx(data->stream), globals->wq);
+
+	/* start stream */
+	ret = doca_ctx_start(doca_rmax_in_stream_as_ctx(data->stream));
 	if (ret != DOCA_SUCCESS)
 		return ret;
 
@@ -1061,6 +1080,7 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 
 	data->recv_pkts = 0;
 	data->recv_bytes = 0;
+	data->dump = config->dump;
 
 	return DOCA_SUCCESS;
 }
@@ -1073,43 +1093,31 @@ bool destroy_stream(struct doca_dev *dev, struct globals *globals, struct stream
 	/* detach flow */
 	ret = doca_rmax_flow_detach(data->flow, data->stream);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error detaching flow: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error detaching flow: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 	ret = doca_rmax_flow_destroy(data->flow);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error destroying flow: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error destroying flow: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 
-	/* detach from workq */
-	ret = doca_ctx_workq_rm(doca_rmax_in_stream_as_ctx(data->stream), globals->wq);
-	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error detaching from workq: %s", doca_get_error_string(ret));
-		is_ok = false;
-	}
 	/* stop stream */
 	ret = doca_ctx_stop(doca_rmax_in_stream_as_ctx(data->stream));
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error stopping context: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error stopping context: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 	/* will destroy all the buffers in the chain */
-	ret = doca_buf_refcount_rm(data->buffer, NULL);
+	ret = doca_buf_dec_refcount(data->buffer, NULL);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error removing buffers: %s", doca_get_error_string(ret));
-		is_ok = false;
-	}
-	/* disconnect stream from device */
-	ret = doca_ctx_dev_rm(doca_rmax_in_stream_as_ctx(data->stream), dev);
-	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error detaching from device: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error removing buffers: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 	/* destroy stream */
 	ret = doca_rmax_in_stream_destroy(data->stream);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_WARN("Error destroying stream: %s", doca_get_error_string(ret));
+		DOCA_LOG_WARN("Error destroying stream: %s", doca_error_get_name(ret));
 		is_ok = false;
 	}
 	return is_ok;
@@ -1186,8 +1194,12 @@ samples_hex_dump(const void *data, size_t size)
 }
 ////////////////////////////////////////////////////////////////////////////
 
-void handle_completion(const struct doca_rmax_in_stream_completion *comp, struct stream_data *data, bool dump)
+void handle_completion(struct doca_rmax_in_stream_event_rx_data *event_rx_data, union doca_data event_user_data)
 {
+	struct stream_data *data = event_user_data.ptr;
+	const struct doca_rmax_in_stream_completion *comp =
+		doca_rmax_in_stream_event_rx_data_get_completion(event_rx_data);
+
 	if (!comp)
 		return;
 	if (comp->elements_count <= 0)
@@ -1197,7 +1209,7 @@ void handle_completion(const struct doca_rmax_in_stream_completion *comp, struct
 	for (size_t i = 0; i < data->num_buffers; ++i)
 		data->recv_bytes += comp->elements_count * data->pkt_size[i];
 
-	if (!dump)
+	if (!data->dump)
 		return;
 	for (size_t i = 0; i < comp->elements_count; ++i)
 		for (size_t chunk = 0; chunk < data->num_buffers; ++chunk) {
@@ -1246,17 +1258,21 @@ bool print_statistics(struct stream_data *data)
 	return true;
 }
 
-void handle_error(const struct doca_rmax_stream_error *err)
+void handle_error(struct doca_rmax_in_stream_event_rx_data *event_rx_data, union doca_data event_user_data)
 {
+	struct stream_data *data = event_user_data.ptr;
+	const struct doca_rmax_stream_error *err = doca_rmax_in_stream_event_rx_data_get_error(event_rx_data);
+
 	if (err)
 		DOCA_LOG_ERR("Error: code=%d message=%s", err->code, err->message);
 	else
 		DOCA_LOG_ERR("Unknown error");
+	
+	data->run_recv_loop = false;
 }
 
 bool run_recv_loop(const struct perf_app_config *config, struct globals *globals, struct stream_data *data)
 {
-	struct doca_rmax_job_rx_data job;
 	int ret;
 
 	ret = clock_gettime(CLOCK_MONOTONIC_RAW, &data->start);
@@ -1265,52 +1281,10 @@ bool run_recv_loop(const struct perf_app_config *config, struct globals *globals
 		return false;
 	}
 
-	/* Prepare initial job */
-	job.base.ctx = doca_rmax_in_stream_as_ctx(data->stream);
-	job.base.flags = 0;
-	job.base.type = DOCA_RMAX_ACTION_TYPE_RX_DATA;
-	job.base.user_data.u64 = 0;
+	data->run_recv_loop = true;
 
-	/* Submit initial job */
-	ret = doca_workq_submit(globals->wq, &job.base);
-	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to submit job: %s", doca_get_error_string(ret));
-		return false;
-	}
-
-	while (true) {
-		struct doca_event ev;
-		uint32_t flags = 0;
-
-		ret = doca_workq_progress_retrieve(globals->wq, &ev, flags);
-
-		switch (ret) {
-		case DOCA_SUCCESS:
-			if ((enum doca_rmax_action_type)(ev.type) == DOCA_RMAX_ACTION_TYPE_RX_DATA) {
-				handle_completion((struct doca_rmax_in_stream_completion *)ev.result.ptr,
-						data, config->dump);
-				/* Submit job to receive next chunk of data */
-				ret = doca_workq_submit(globals->wq, &job.base);
-				if (ret != DOCA_SUCCESS) {
-					DOCA_LOG_ERR("Failed to submit job: %s", doca_get_error_string(ret));
-					break;
-				}
-			}
-			break;
-		case DOCA_ERROR_AGAIN:
-			/* no data available */
-			break;
-		case DOCA_ERROR_IO_FAILED:
-			if ((enum doca_rmax_action_type)(ev.type) == DOCA_RMAX_ACTION_TYPE_RX_DATA) {
-				handle_error((struct doca_rmax_stream_error *)ev.result.ptr);
-				return false;
-			}
-			/* fallthrough */
-		default:
-			DOCA_LOG_ERR("Progress retrieval failed with error %s", doca_get_error_name(ret));
-			/* exit from loop on error */
-			return false;
-		}
+	while (data->run_recv_loop) {
+		(void)doca_pe_progress(globals->pe);
 
 		if (!print_statistics(data))
 			return false;
@@ -1330,33 +1304,32 @@ int main(int argc, char **argv)
 	struct perf_app_config config;
 	doca_error_t ret;
 	int exit_code = EXIT_SUCCESS;
-	struct doca_logger_backend *stdout_logger = NULL;
 
 	/* Create a logger backend that prints to the standard output */
-	ret = doca_log_create_file_backend(stdout, &stdout_logger);
+	ret = doca_log_backend_create_standard();
 	if (ret != DOCA_SUCCESS) {
-		fprintf(stderr, "Logger initialization failed: %s\n", doca_get_error_string(ret));
+		fprintf(stderr, "Logger initialization failed: %s\n", doca_error_get_name(ret));
 		return EXIT_FAILURE;
 	}
 
 	init_config(&config);
 	ret = doca_argp_init(APP_NAME, &config);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_name(ret));
 		return EXIT_FAILURE;
 	}
 	if (!register_argp_params())
 		return EXIT_FAILURE;
 	ret = doca_argp_start(argc, argv);
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to parse application command line: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to parse application command line: %s", doca_error_get_name(ret));
 		return EXIT_FAILURE;
 	}
 
 	if (config.list) {
 		ret = doca_rmax_init();
 		if (ret != DOCA_SUCCESS) {
-			DOCA_LOG_ERR("Failed to initialize DOCA RMAX: %s", doca_get_error_string(ret));
+			DOCA_LOG_ERR("Failed to initialize DOCA RMAX: %s", doca_error_get_name(ret));
 			return EXIT_FAILURE;
 		}
 
@@ -1376,13 +1349,13 @@ int main(int argc, char **argv)
 		if (config.affinity_mask_set) {
 			ret = doca_rmax_set_cpu_affinity_mask(&config.affinity_mask);
 			if (ret != DOCA_SUCCESS) {
-				DOCA_LOG_ERR("Error setting CPU affinity mask: %s", doca_get_error_string(ret));
+				DOCA_LOG_ERR("Error setting CPU affinity mask: %s", doca_error_get_name(ret));
 				return EXIT_FAILURE;
 			}
 		}
 		ret = doca_rmax_init();
 		if (ret != DOCA_SUCCESS) {
-			DOCA_LOG_ERR("Failed to initialize DOCA RMAX: %s", doca_get_error_string(ret));
+			DOCA_LOG_ERR("Failed to initialize DOCA RMAX: %s", doca_error_get_name(ret));
 			return EXIT_FAILURE;
 		}
 
@@ -1401,7 +1374,7 @@ int main(int argc, char **argv)
 			}
 			ret = doca_rmax_set_clock(clock_dev);
 			if (ret != DOCA_SUCCESS) {
-				DOCA_LOG_ERR("Error setting PTP device: %s", doca_get_error_string(ret));
+				DOCA_LOG_ERR("Error setting PTP device: %s", doca_error_get_name(ret));
 				exit_code = EXIT_FAILURE;
 				goto cleanup_ptp_device;
 			}
@@ -1431,21 +1404,21 @@ cleanup_ptp_device:
 			ret = doca_dev_close(clock_dev);
 			if (ret != DOCA_SUCCESS) {
 				exit_code = EXIT_FAILURE;
-				DOCA_LOG_ERR("Error closing PTP device: %s", doca_get_error_string(ret));
+				DOCA_LOG_ERR("Error closing PTP device: %s", doca_error_get_name(ret));
 			}
 		}
 cleanup_device:
 		ret = doca_dev_close(dev);
 		if (ret != DOCA_SUCCESS) {
 			exit_code = EXIT_FAILURE;
-			DOCA_LOG_ERR("Error closing device: %s", doca_get_error_string(ret));
+			DOCA_LOG_ERR("Error closing device: %s", doca_error_get_name(ret));
 		}
 	}
 
 cleanup:
 	ret = doca_rmax_release();
 	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to release DOCA RMAX: %s", doca_get_error_string(ret));
+		DOCA_LOG_ERR("Failed to release DOCA RMAX: %s", doca_error_get_name(ret));
 		return EXIT_FAILURE;
 	}
 	doca_argp_destroy();
