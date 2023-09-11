@@ -320,6 +320,10 @@ public:
         }
 
         rmax_status_t status = rmax_in_get_next_chunk(m_stream_id, min_packets, max_packets, timeout, flags, &comp);
+        if (status == RMAX_ERR_CHECKSUM_ISSUE) {
+            std::cerr << "Error: CRC" << std::endl;
+            status = RMAX_OK;
+        }
         if (status != RMAX_OK && status != RMAX_SIGNAL) {
             std::cerr << "Failed to get next chunk. Error: " << status << std::endl;
         }

@@ -42,8 +42,8 @@ int main(int argc, char *argv[])
     CLI::App app{"Mellanox Rivermax Generic RX Demo App"};
 
     std::string local_ip;
-    std::string mc_dst_ip;
-    std::string mc_src_ip;
+    std::string dst_ip;
+    std::string src_ip;
     uint16_t port;
     uint16_t header_size = 0;
     uint16_t payload_size = 1500;
@@ -54,8 +54,8 @@ int main(int argc, char *argv[])
     std::vector<int> cpu_affinity;
 
     app.add_option("-i,--interface-ip", local_ip, "IP of the local interface")->required()->check(CLI::ValidIPV4);
-    app.add_option("-m,--multicast-dst", mc_dst_ip, "Multicast address to bind to")->required()->check(CLI::ValidIPV4);
-    app.add_option("-s,--multicast-src", mc_src_ip, "Source multicast to read from")->required()->check(CLI::ValidIPV4);
+    app.add_option("-m,--dst-address", dst_ip, "Destination address to bind to")->required()->check(CLI::ValidIPV4);
+    app.add_option("-s,--src-address", src_ip, "Source address to read from")->required()->check(CLI::ValidIPV4);
     app.add_option("-p,--port", port, "Receive port to use")->required()->check(CLI::Range(1, 65535));
     auto *opt_checksum = app.add_flag("-x,--checksum-header", use_checksum_header, "Use checksum header");
     app.add_option("-r,--header-size", header_size, "User header size", true)->check(CLI::PositiveNumber)->excludes(opt_checksum);
@@ -74,28 +74,13 @@ int main(int argc, char *argv[])
     // Print the library and app version.
     const char *rmax_version = rmax_get_version_string();
     static std::string app_version =
-        std::to_string(RMAX_API_MAJOR) + std::string(".") +
-        std::to_string(RMAX_API_MINOR) + std::string(".") +
-        std::to_string(RMAX_RELEASE_VERSION) + std::string(".") +
-        std::to_string(RMAX_BUILD);
+        std::to_string(RMAX_MAJOR_VERSION) + std::string(".") +
+        std::to_string(RMAX_MINOR_VERSION) + std::string(".") +
+        std::to_string(RMAX_PATCH_VERSION);
     std::cout << "#########################################\n";
-    std::cout << "## Rivermax library version:    " << rmax_version << "\n";
+    std::cout << "## Rivermax SDK version:        " << rmax_version << "\n";
     std::cout << "## Application version:         " << app_version << "\n";
     std::cout << "#########################################\n";
-
-    // Verify Rivermax library version matches (or is compatible) with this application.
-    unsigned int api_major;
-    unsigned int api_minor;
-    unsigned int release;
-    unsigned int build;
-    rmax_get_version(&api_major, &api_minor, &release, &build);
-    if (api_major != RMAX_API_MAJOR || api_minor < RMAX_API_MINOR) {
-        std::cerr << "The current Rivermax version is not compatible with this application." << std::endl;
-        exit(-1);
-    }
-    if (api_minor > RMAX_API_MINOR || release != RMAX_RELEASE_VERSION || build != RMAX_BUILD) {
-        std::cout << "WARNING!!! Rivermax and application versions are not aligned" << std::endl;
-    }
 
     // Initializes signals caught by the application
     initialize_signals();
@@ -154,14 +139,14 @@ int main(int argc, char *argv[])
     memset(&in_flow, 0, sizeof(in_flow));
     in_flow.local_addr.sin_port = htons((uint16_t)port);
     in_flow.local_addr.sin_family = AF_INET;
-    rc = inet_pton(AF_INET, mc_dst_ip.c_str(), &in_flow.local_addr.sin_addr);
+    rc = inet_pton(AF_INET, dst_ip.c_str(), &in_flow.local_addr.sin_addr);
     if (rc != 1) {
         std::cerr << "Failed to parse destination network address" << std::endl;
         delete p_stream;
         do_cleanup_exit();
     }
     in_flow.remote_addr.sin_family = AF_INET;
-    rc = inet_pton(AF_INET, mc_src_ip.c_str(), &in_flow.remote_addr.sin_addr);
+    rc = inet_pton(AF_INET, src_ip.c_str(), &in_flow.remote_addr.sin_addr);
     if (rc != 1) {
         std::cerr << "Failed to parse source network address" << std::endl;
         delete p_stream;
