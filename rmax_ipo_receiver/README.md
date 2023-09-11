@@ -52,7 +52,7 @@ The resulting binary can be found in directory `build`.
 ### Synopsis
 
 ```shell
-sudo ./rmax_ipo_receiver --local-ip 1.2.3.4 --src-ip 6.7.8.9 --dst-ip 1.2.3.4 -p 50020 [optional parameters]
+sudo ./rmax_ipo_receiver --local-ips 1.2.3.4 --src-ips 6.7.8.9 --dst-ips 1.2.3.4 -p 50020 [optional parameters]
 ```
 
 To see all command-line options please invoke `rmax_ipo_receiver --help`.
@@ -87,7 +87,7 @@ being received are 239.4.4.5:56789. The application is set to run on cores #2
 and #3.
 
 ```shell
-sudo ./rmax_ipo_receiver --local-ip 192.168.1.2 --src-ip 192.168.1.3 --dst-ip 239.4.4.5 -p 56789 -i 2 -a 3
+sudo ./rmax_ipo_receiver --local-ips 192.168.1.2 --src-ips 192.168.1.3 --dst-ips 239.4.4.5 -p 56789 -i 2 -a 3
 ```
 
 ### Example #2: _Receiving a redundant stream from two different paths_
@@ -99,7 +99,7 @@ UDP ports on which the stream is being received are 239.4.4.4:45678 and
 239.4.4.5:56789. The application is set to run on cores #2 and #3.
 
 ```shell
-sudo ./rmax_ipo_receiver --local-ip 192.168.1.2,192.168.2.3 --src-ip 192.168.1.3,192.168.2.4 --dst-ip 239.4.4.4,239.4.4.5 -p 45678,56789 -i 2 -a 3
+sudo ./rmax_ipo_receiver --local-ips 192.168.1.2,192.168.2.3 --src-ips 192.168.1.3,192.168.2.4 --dst-ips 239.4.4.4,239.4.4.5 -p 45678,56789 -i 2 -a 3
 ```
 
 ### Example #3: _Receiving a redundant stream using header/data split feature_
@@ -112,7 +112,7 @@ bytes are placed in dedicated payload buffers. In this case, the payload
 buffers are also allocated in RAM.
 
 ```shell
-sudo ./rmax_ipo_receiver --local-ip 192.168.1.2,192.168.2.3 --src-ip 192.168.1.3,192.168.2.4 --dst-ip 239.4.4.4,239.4.4.5 -p 45678,56789 --app-hdr-size 40 --payload-size 1420
+sudo ./rmax_ipo_receiver --local-ips 192.168.1.2,192.168.2.3 --src-ips 192.168.1.3,192.168.2.4 --dst-ips 239.4.4.4,239.4.4.5 -p 45678,56789 --app-hdr-size 40 --payload-size 1420
 ```
 
 ## Example #4: _Receiving multiple streams_
@@ -130,7 +130,7 @@ same application process. Streams:
     * source 192.168.2.4, destination 239.4.4.9:56789, device 192.168.2.3
 
 ```shell
-sudo ./rmax_ipo_receiver --local-ip 192.168.1.2,192.168.2.3 --src-ip 192.168.1.3,192.168.2.4 --dst-ip 239.4.4.4,239.4.4.5 -p 45678,56789 --streams 3
+sudo ./rmax_ipo_receiver --local-ips 192.168.1.2,192.168.2.3 --src-ips 192.168.1.3,192.168.2.4 --dst-ips 239.4.4.4,239.4.4.5 -p 45678,56789 --streams 3
 ```
 
 ## Known Issues / Limitations

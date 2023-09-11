@@ -68,13 +68,18 @@ private:
     /* Sender objects container */
     std::vector<std::unique_ptr<IPOReceiverIONode>> m_receivers;
     /* Stream per thread distribution */
-    std::unordered_map<size_t,size_t> m_streams_per_thread;
+    std::unordered_map<size_t, size_t> m_streams_per_thread;
     /* Network recv flows */
     std::vector<std::vector<FourTupleFlow>> m_flows;
+    /* inet addresses of NICs */
+    std::vector<in_addr> m_device_address;
+    /* Memory keys for memory allocated in RAM */
+    std::vector<rmax_mkey_id> m_ram_mkeys;
     // Maximum Path Differential for "Class B: Moderate-Skew" receivers defined
     // by SMPTE ST 2022-7:2019 "Seamless Protection Switching of RTP Datagrams".
     uint64_t m_max_path_differential_us = 50000;
     bool m_is_extended_sequence_number = false;
+    bool m_register_memory = false;
     byte_ptr_t m_header_buffer = nullptr;
     byte_ptr_t m_payload_buffer = nullptr;
     size_t m_num_paths_per_stream = 0;
@@ -123,7 +128,7 @@ private:
      */
     void initialize_receive_threads();
     /**
-     * @brief: Allocates application memory.
+     * @brief: Allocates application memory and registers it if requested.
      *
      * This method is responsible to allocate the required memory for the application
      * using @ref ral::lib::services::MemoryAllocator interface.
@@ -131,9 +136,18 @@ private:
      * block. This memory block will be distributed to the different
      * components of the application.
      *
+     * If @ref m_register_memory is set then this function also registers
+     * allocated memory using @ref rmax_register_memory on all devices.
+     *
      * @return: Return status of the operation.
      */
     ReturnStatus allocate_app_memory();
+    /**
+     * @brief Unregister previously registered memory.
+     *
+     * Unregister memory using @ref rmax_deregister_memory.
+     */
+    void unregister_app_memory();
     /**
      * @brief: Distributes memory for receivers.
      *

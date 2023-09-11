@@ -33,7 +33,6 @@ using namespace ral::lib::services;
 using namespace ral::io_node;
 using namespace ral::apps::rmax_ipo_receiver;
 
-
 int main(int argc, const char* argv[])
 {
     IPOReceiverApp app(argc, argv);
@@ -74,11 +73,13 @@ void IPOReceiverApp::add_cli_options()
     m_cli_parser_manager->add_option(CLIOptStr::INTERNAL_CORE);
     m_cli_parser_manager->add_option(CLIOptStr::APPLICATION_CORE);
     m_cli_parser_manager->add_option(CLIOptStr::SLEEP_US);
+    m_cli_parser_manager->add_option(CLIOptStr::ALLOCATOR_TYPE);
     m_cli_parser_manager->add_option(CLIOptStr::VERBOSE);
 
     parser->add_option("-D,--max-pd", m_max_path_differential_us, "Maximum path differential, us", true)
         ->check(CLI::Range(1, USECS_IN_SECOND));
     parser->add_flag("-X,--ext-seq-num", m_is_extended_sequence_number, "Parse extended sequence number from RTP payload");
+    parser->add_flag("--register-memory", m_register_memory, "Register memory on application side for better performance");
 }
 
 ReturnStatus IPOReceiverApp::initialize_connection_parameters()
@@ -98,6 +99,19 @@ ReturnStatus IPOReceiverApp::initialize_connection_parameters()
     }
     if (m_app_settings->destination_ports.size() != m_num_paths_per_stream) {
         std::cerr << "Must be the same number of destination ports as number of source IPs" << std::endl;
+        return ReturnStatus::failure;
+    }
+
+    m_device_address.resize(m_num_paths_per_stream);
+    for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
+        if (inet_pton(AF_INET, m_app_settings->local_ips[i].c_str(), &m_device_address[i]) != 1) {
+            std::cerr << "Failed to parse address of device " << m_app_settings->local_ips[i] << std::endl;
+            return ReturnStatus::failure;
+        }
+    }
+
+    if (m_register_memory && m_app_settings->packet_app_header_size == 0) {
+        std::cerr << "Memory registration is supported only in header-data split mode!" << std::endl;
         return ReturnStatus::failure;
     }
 
@@ -121,6 +135,7 @@ ReturnStatus IPOReceiverApp::run()
         }
         distribute_memory_for_receivers();
         run_threads(m_receivers);
+        unregister_app_memory();
     }
     catch (const std::exception & error) {
         std::cerr << error.what() << std::endl;
@@ -217,28 +232,48 @@ ReturnStatus IPOReceiverApp::allocate_app_memory()
         return rc;
     }
 
-    if (hdr_mem_len) {
-        m_header_buffer = allocate_and_align(hdr_mem_len);
+    m_header_buffer = allocate_and_align(hdr_mem_len + pld_mem_len);
+    m_payload_buffer = m_header_buffer + hdr_mem_len;
 
-        if (m_header_buffer) {
-            std::cout << "Allocated " << hdr_mem_len << " header bytes at address "
-                << static_cast<void*>(m_header_buffer) << std::endl;
-        } else {
-            std::cerr << "Failed to allocate header memory" << std::endl;
-            return ReturnStatus::failure;
-        }
-    }
-    m_payload_buffer = allocate_and_align(pld_mem_len);
-
-    if (m_payload_buffer) {
-        std::cout << "Allocated " << pld_mem_len << " payload bytes at address "
-            << static_cast<void*>(m_payload_buffer) << std::endl;
+    if (m_header_buffer) {
+        std::cout << "Allocated " << hdr_mem_len << " bytes for header"
+            << " at address " << static_cast<void*>(m_header_buffer)
+            << " and " <<  pld_mem_len << " bytes for payload"
+            << " at address " << static_cast<void*>(m_payload_buffer) << std::endl;
     } else {
-        std::cerr << "Failed to allocate payload memory" << std::endl;
+        std::cerr << "Failed to allocate RAM" << std::endl;
         return ReturnStatus::failure;
     }
 
+    m_ram_mkeys.resize(m_num_paths_per_stream);
+
+    if (m_register_memory) {
+        for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
+            rmax_status_t status = rmax_register_memory(m_header_buffer, hdr_mem_len + pld_mem_len,
+                    m_device_address[i], &m_ram_mkeys[i]);
+            if (status != RMAX_OK) {
+                std::cerr << "Failed to register RAM on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
+                return ReturnStatus::failure;
+            }
+        }
+    }
+
     return ReturnStatus::success;
+}
+
+void IPOReceiverApp::unregister_app_memory()
+{
+    if (!m_register_memory) {
+        return;
+    }
+
+    rmax_status_t status;
+    for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
+        status = rmax_deregister_memory(m_ram_mkeys[i], m_device_address[i]);
+        if (status != RMAX_OK) {
+            std::cerr << "Failed to deregister RAM on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
+        }
+    }
 }
 
 ReturnStatus IPOReceiverApp::get_memory_length(size_t& hdr_mem_len, size_t& pld_mem_len)
@@ -275,6 +310,9 @@ void IPOReceiverApp::distribute_memory_for_receivers()
             size_t hdr, pld;
 
             stream->set_buffers(hdr_ptr, pld_ptr);
+            if (m_register_memory) {
+                stream->set_memory_keys(m_ram_mkeys, m_ram_mkeys);
+            }
             stream->query_buffer_size(hdr, pld);
 
             hdr_ptr += m_mem_allocator->align_length(hdr);
