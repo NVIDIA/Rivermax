@@ -1640,7 +1640,7 @@ void rivermax_audio_sender(AudioRmaxData data)
         , data.timestamp_tick);
 
     EventMgr event_mgr;
-    if (!disable_wait_for_event && event_mgr.init(stream_id)) {
+    if (!disable_wait_for_event && !event_mgr.init(stream_id)) {
         run_threads = false;
         data.notify_all_cv();
         return;
@@ -1885,7 +1885,7 @@ void rivermax_video_sender(VideoRmaxData data)
                                                                 data.pix_format);
 
     EventMgr event_mgr;
-    if (!disable_wait_for_event && event_mgr.init(stream_id)) {
+    if (!disable_wait_for_event && !event_mgr.init(stream_id)) {
         run_threads = false;
         data.notify_all_cv();
         return;
@@ -2619,10 +2619,6 @@ static bool set_clock(rmax_clock_types clock_handler_type, std::vector<std::stri
 
 int main(int argc, char *argv[])
 {
-    unsigned int api_major;
-    unsigned int api_minor;
-    unsigned int release;
-    unsigned int build;
     int ret = 0;
 
     std::vector<std::string> sdp_files;
@@ -2756,29 +2752,14 @@ int main(int argc, char *argv[])
         }
     }
 
-    static std::string media_version = std::to_string(RMAX_API_MAJOR) + std::string(".") +
-                                       std::to_string(RMAX_API_MINOR)+ std::string(".") +
-                                       std::to_string(RMAX_RELEASE_VERSION) +
-                                       std::string(".") + std::to_string(RMAX_BUILD);
+    static std::string media_version = std::to_string(RMAX_MAJOR_VERSION) + std::string(".") +
+                                       std::to_string(RMAX_MINOR_VERSION)+ std::string(".") +
+                                       std::to_string(RMAX_PATCH_VERSION);
 
     std::cout<<"#############################################\n";
-    std::cout<<"## Rivermax library version:    " << rmax_version << std::endl;
+    std::cout<<"## Rivermax SDK version:        " << rmax_version << std::endl;
     std::cout<<"## Rivermax player version:     " << media_version << std::endl;
     std::cout<<"#############################################\n";
-
-    /* Verify version mismatch */
-    rmax_get_version(&api_major, &api_minor, &release, &build);
-    if (api_major != RMAX_API_MAJOR || api_minor < RMAX_API_MINOR) {
-      std::cerr << "The current Rivermax version is not compatible with this version of rivermax player\n";
-      return -1;
-    }
-    if (api_minor > RMAX_API_MINOR || release != RMAX_RELEASE_VERSION || build != RMAX_BUILD) {
-        void *ctx;
-
-        ctx = color_set(COLOR_RED);
-        std::cout << "\nWARNING!!! Rivermax and rivermax player versions are not aligned\n\n";
-        color_reset(ctx);
-    }
 
     if (status != RMAX_OK) {
         std::cerr << "Failed starting Rivermax " << status << std::endl;
