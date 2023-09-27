@@ -461,7 +461,7 @@ int EventMgr::bind_event_channel(rmax_event_channel_t event_channel)
 }
 #endif
 
-rmax_status_t EventMgr::init(rmax_stream_id stream_id)
+bool EventMgr::init(rmax_stream_id stream_id)
 {
     rmax_status_t status;
     rmax_event_channel_t event_channel;
@@ -469,17 +469,17 @@ rmax_status_t EventMgr::init(rmax_stream_id stream_id)
     status = rmax_get_event_channel(stream_id, &event_channel);
     if (status != RMAX_OK) {
         std::cout << "Failed getting event channel with rmax_get_event_channel, status:" << status << std::endl;
-        return status;
+        return false;
     }
 
     int ret = bind_event_channel(event_channel);
     if (ret) {
         /* close event_channel */
 
-        return RMAX_ERR_NOT_INITIALAZED;
+        return false;
     }
     m_stream_id = stream_id;
-    return RMAX_OK;
+    return true;
 }
 
 bool EventMgr::request_notification(rmax_stream_id stream_id)

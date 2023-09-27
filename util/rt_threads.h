@@ -107,7 +107,7 @@ public:
     EventMgr(EventMgr&) =delete;
     EventMgr& operator=(const EventMgr&) =delete;
 
-    rmax_status_t init(rmax_stream_id stream_id);
+    bool init(rmax_stream_id stream_id);
     bool request_notification(rmax_stream_id stream_id);
     int wait_for_notification(rmax_stream_id stream_id);
 
