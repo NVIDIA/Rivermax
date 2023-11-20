@@ -67,7 +67,7 @@ else()
         set(RMAX_APPS_LIB_PATH "${Rivermax_INCLUDE_DIR}\\..\\rmax_apps_lib")
     else()
         # On Linux attempt to guess the location where it was extracted to
-        set(RMAX_APPS_LIB_PATH "$ENV{HOME}\\rmax_apps_lib" CACHE INTERNAL "")
+        set(RMAX_APPS_LIB_PATH "$ENV{HOME}/rmax_apps_lib" CACHE INTERNAL "")
     endif()
     message(STATUS "RmaxAppsLib: attempting search in '${RMAX_APPS_LIB_PATH}'...")
 endif()

@@ -102,13 +102,19 @@ ReturnStatus IPOReceiverApp::initialize_connection_parameters()
         return ReturnStatus::failure;
     }
 
-    m_device_address.resize(m_num_paths_per_stream);
+    m_device_ifaces.resize(m_num_paths_per_stream);
     for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
-        if (inet_pton(AF_INET, m_app_settings->local_ips[i].c_str(), &m_device_address[i]) != 1) {
+        in_addr device_address;
+        if (inet_pton(AF_INET, m_app_settings->local_ips[i].c_str(), &device_address) != 1) {
             std::cerr << "Failed to parse address of device " << m_app_settings->local_ips[i] << std::endl;
             return ReturnStatus::failure;
         }
-    }
+        rmx_status status = rmx_retrieve_device_iface_ipv4(&m_device_ifaces[i], &device_address);
+        if (status != RMX_OK) {
+            std::cerr << "Failed to get device: " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
+            return ReturnStatus::failure;
+        }
+     }
 
     if (m_register_memory && m_app_settings->packet_app_header_size == 0) {
         std::cerr << "Memory registration is supported only in header-data split mode!" << std::endl;
@@ -126,8 +132,8 @@ ReturnStatus IPOReceiverApp::run()
 
     try {
         distribute_work_for_threads();
-        initialize_receive_streams();
-        initialize_receive_threads();
+        configure_network_flows();
+        initialize_receive_io_nodes();
         ReturnStatus rc = allocate_app_memory();
         if (rc == ReturnStatus::failure) {
             std::cerr << "Failed to allocate the memory required for the application" << std::endl;
@@ -147,20 +153,17 @@ ReturnStatus IPOReceiverApp::run()
 
 ReturnStatus IPOReceiverApp::initialize_rivermax_resources()
 {
-    rmax_init_config init_config;
-    memset(&init_config, 0, sizeof(init_config));
-
-    init_config.flags |= RIVERMAX_HANDLE_SIGNAL;
+    std::vector<int> cpu_affinity;
 
     if (m_app_settings->internal_thread_core != CPU_NONE) {
-        RMAX_CPU_SET(m_app_settings->internal_thread_core, &init_config.cpu_mask);
-        init_config.flags |= RIVERMAX_CPU_MASK;
+        cpu_affinity.push_back(m_app_settings->internal_thread_core);
     }
+
     rt_set_realtime_class();
-    return m_rmax_apps_lib.initialize_rivermax(init_config);
+    return m_rmax_apps_lib.initialize_rivermax(cpu_affinity);
 }
 
-void IPOReceiverApp::initialize_receive_streams()
+void IPOReceiverApp::configure_network_flows()
 {
     std::vector<std::string> ip_prefix_str;
     std::vector<int> ip_last_octet;
@@ -196,7 +199,7 @@ void IPOReceiverApp::distribute_work_for_threads()
     }
 }
 
-void IPOReceiverApp::initialize_receive_threads()
+void IPOReceiverApp::initialize_receive_io_nodes()
 {
     size_t streams_offset = 0;
     for (size_t rx_idx = 0; rx_idx < m_app_settings->num_of_threads; rx_idx++) {
@@ -218,41 +221,44 @@ void IPOReceiverApp::initialize_receive_threads()
     }
 }
 
-byte_ptr_t IPOReceiverApp::allocate_and_align(size_t size)
+byte_t* IPOReceiverApp::allocate_and_align(size_t size)
 {
-    return static_cast<byte_ptr_t>(m_mem_allocator->allocate_aligned(size, m_mem_allocator->get_page_size()));
+    return static_cast<byte_t*>(m_mem_allocator->allocate_aligned(size, m_mem_allocator->get_page_size()));
 }
 
 ReturnStatus IPOReceiverApp::allocate_app_memory()
 {
-    size_t hdr_mem_len;
-    size_t pld_mem_len;
-    ReturnStatus rc = get_memory_length(hdr_mem_len, pld_mem_len);
+    size_t hdr_mem_size;
+    size_t pld_mem_size;
+    ReturnStatus rc = get_total_ipo_streams_memory_size(hdr_mem_size, pld_mem_size);
     if (rc != ReturnStatus::success) {
         return rc;
     }
 
-    m_header_buffer = allocate_and_align(hdr_mem_len + pld_mem_len);
-    m_payload_buffer = m_header_buffer + hdr_mem_len;
+    m_header_buffer = allocate_and_align(hdr_mem_size + pld_mem_size);
+    m_payload_buffer = m_header_buffer + hdr_mem_size;
 
     if (m_header_buffer) {
-        std::cout << "Allocated " << hdr_mem_len << " bytes for header"
+        std::cout << "Allocated " << hdr_mem_size << " bytes for header"
             << " at address " << static_cast<void*>(m_header_buffer)
-            << " and " <<  pld_mem_len << " bytes for payload"
+            << " and " <<  pld_mem_size << " bytes for payload"
             << " at address " << static_cast<void*>(m_payload_buffer) << std::endl;
     } else {
         std::cerr << "Failed to allocate RAM" << std::endl;
         return ReturnStatus::failure;
     }
 
-    m_ram_mkeys.resize(m_num_paths_per_stream);
+    m_mem_regions.resize(m_num_paths_per_stream);
 
     if (m_register_memory) {
         for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
-            rmax_status_t status = rmax_register_memory(m_header_buffer, hdr_mem_len + pld_mem_len,
-                    m_device_address[i], &m_ram_mkeys[i]);
-            if (status != RMAX_OK) {
-                std::cerr << "Failed to register RAM on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
+            rmx_mem_reg_params mem_registry;
+            rmx_init_mem_registry(&mem_registry, &m_device_ifaces[i]);
+            m_mem_regions[i].addr = m_header_buffer;
+            m_mem_regions[i].length = hdr_mem_size + pld_mem_size;
+            rmx_status status = rmx_register_memory(&m_mem_regions[i], &mem_registry);
+            if (status != RMX_OK) {
+                std::cerr << "Failed to register payload memory with status: " << status << std::endl;
                 return ReturnStatus::failure;
             }
         }
@@ -267,43 +273,42 @@ void IPOReceiverApp::unregister_app_memory()
         return;
     }
 
-    rmax_status_t status;
     for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
-        status = rmax_deregister_memory(m_ram_mkeys[i], m_device_address[i]);
-        if (status != RMAX_OK) {
+        rmx_status status = rmx_deregister_memory(&m_mem_regions[i], &m_device_ifaces[i]);
+        if (status != RMX_OK) {
             std::cerr << "Failed to deregister RAM on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
         }
     }
 }
 
-ReturnStatus IPOReceiverApp::get_memory_length(size_t& hdr_mem_len, size_t& pld_mem_len)
+ReturnStatus IPOReceiverApp::get_total_ipo_streams_memory_size(size_t& hdr_mem_size, size_t& pld_mem_size)
 {
-    hdr_mem_len = 0;
-    pld_mem_len = 0;
+    hdr_mem_size = 0;
+    pld_mem_size = 0;
 
     for (const auto& receiver : m_receivers) {
         for (const auto& stream : receiver->get_streams()) {
-            size_t hdr, pld;
-            ReturnStatus rc = stream->query_buffer_size(hdr, pld);
+            size_t hdr_buf_size, pld_buf_size;
+            ReturnStatus rc = stream->query_buffer_size(hdr_buf_size, pld_buf_size);
             if (rc != ReturnStatus::success) {
                 std::cerr << "Failed to query buffer size for stream " << stream->get_id() << " of receiver " << receiver->get_index() << std::endl;
                 return rc;
             }
-            hdr_mem_len += m_mem_allocator->align_length(hdr);
-            pld_mem_len += m_mem_allocator->align_length(pld);
+            hdr_mem_size += m_mem_allocator->align_length(hdr_buf_size);
+            pld_mem_size += m_mem_allocator->align_length(pld_buf_size);
         }
     }
 
-    std::cout << "Application requires " << hdr_mem_len << " bytes of header memory and "
-        << pld_mem_len << " bytes of payload memory" << std::endl;
+    std::cout << "Application requires " << hdr_mem_size << " bytes of header memory and "
+        << pld_mem_size << " bytes of payload memory" << std::endl;
 
     return ReturnStatus::success;
 }
 
 void IPOReceiverApp::distribute_memory_for_receivers()
 {
-    byte_ptr_t hdr_ptr = m_header_buffer;
-    byte_ptr_t pld_ptr = m_payload_buffer;
+    byte_t* hdr_ptr = m_header_buffer;
+    byte_t* pld_ptr = m_payload_buffer;
 
     for (auto& receiver : m_receivers) {
         for (auto& stream : receiver->get_streams()) {
@@ -311,7 +316,7 @@ void IPOReceiverApp::distribute_memory_for_receivers()
 
             stream->set_buffers(hdr_ptr, pld_ptr);
             if (m_register_memory) {
-                stream->set_memory_keys(m_ram_mkeys, m_ram_mkeys);
+                stream->set_memory_keys(m_mem_regions, m_mem_regions);
             }
             stream->query_buffer_size(hdr, pld);
 

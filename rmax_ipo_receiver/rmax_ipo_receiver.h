@@ -71,17 +71,17 @@ private:
     std::unordered_map<size_t, size_t> m_streams_per_thread;
     /* Network recv flows */
     std::vector<std::vector<FourTupleFlow>> m_flows;
-    /* inet addresses of NICs */
-    std::vector<in_addr> m_device_address;
-    /* Memory keys for memory allocated in RAM */
-    std::vector<rmax_mkey_id> m_ram_mkeys;
+    /* NIC device interfaces */
+    std::vector<rmx_device_iface> m_device_ifaces;
+    /* Memory regions for memory allocated for each device interface */
+    std::vector<rmx_mem_region> m_mem_regions;
     // Maximum Path Differential for "Class B: Moderate-Skew" receivers defined
     // by SMPTE ST 2022-7:2019 "Seamless Protection Switching of RTP Datagrams".
     uint64_t m_max_path_differential_us = 50000;
     bool m_is_extended_sequence_number = false;
     bool m_register_memory = false;
-    byte_ptr_t m_header_buffer = nullptr;
-    byte_ptr_t m_payload_buffer = nullptr;
+    byte_t* m_header_buffer = nullptr;
+    byte_t* m_payload_buffer = nullptr;
     size_t m_num_paths_per_stream = 0;
 
 public:
@@ -99,39 +99,39 @@ private:
     ReturnStatus initialize_connection_parameters() final;
     ReturnStatus initialize_rivermax_resources() final;
     /**
-     * @brief: Initializes network receive streams.
+     * @brief: Initializes network receive flows.
      *
-     * This method is responsible to initialize the receive streams will be
-     * used in the application. Those streams will be distributed in @ref
-     * ral::apps::IPOReceiverApp::distribute_work_for_threads to the streams
-     * will be used in the application.
+     * This method initializes the receive flows that will be used
+     * in the application. These flows will be distributed
+     * in @ref ral::apps::IPOReceiverApp::distribute_work_for_threads
+     * between application threads.
      * The application supports unicast and multicast UDPv4 receive flows.
      */
-    void initialize_receive_streams();
+    void configure_network_flows();
     /**
      * @brief: Distributes work for threads.
      *
-     * This method is responsible to distribute work to threads, by
+     * This method is responsible for distributing work to threads, by
      * distributing number of streams per receiver thread uniformly.
      * In future development, this can be extended to different
      * streams per thread distribution policies.
      */
     void distribute_work_for_threads();
     /**
-     * @brief: Initializes receiver threads.
+     * @brief: Initializes receiver I/O nodes.
      *
-     * This method is responsible to initialize
+     * This method is responsible for initialization of
      * @ref ral::io_node::IPOReceiverIONode objects to work. It will initiate
      * objects with the relevant parameters. The objects initialized in this
      * method, will be the contexts to the std::thread objects will run in
      * @ref ral::apps::RmaxBaseApp::run_threads method.
      */
-    void initialize_receive_threads();
+    void initialize_receive_io_nodes();
     /**
      * @brief: Allocates application memory and registers it if requested.
      *
-     * This method is responsible to allocate the required memory for the application
-     * using @ref ral::lib::services::MemoryAllocator interface.
+     * This method is responsible for allocation of the required memory for
+     * the application using @ref ral::lib::services::MemoryAllocator interface.
      * The allocation policy of the application is allocating one big memory
      * block. This memory block will be distributed to the different
      * components of the application.
@@ -139,7 +139,7 @@ private:
      * If @ref m_register_memory is set then this function also registers
      * allocated memory using @ref rmax_register_memory on all devices.
      *
-     * @return: Return status of the operation.
+     * @return: Returns status of the operation.
      */
     ReturnStatus allocate_app_memory();
     /**
@@ -151,30 +151,31 @@ private:
     /**
      * @brief: Distributes memory for receivers.
      *
-     * This method is responsible to distribute the memory allocated
+     * This method is responsible for distributing the memory allocated
      * by @ref allocate_app_memory to the receivers of the application.
      */
     void distribute_memory_for_receivers();
     /**
-     * @brief: Returns the required memory length for the application.
+     * @brief: Returns the memory size for all the receive streams.
      *
-     * This method is responsible to calculate the memory required for the application.
-     * It will do so by iterating it's receivers and each receiver's streams.
+     * This method calculates the sum of memory sizes for all IONodes and their IPO streams.
+     * Inside an IPO stream memory size is not summed along redundant streams,
+     * they are only checked for equal requirements.
      *
-     * @param [out] hdr_mem_len: Required header memory length.
-     * @param [out] pld_mem_len: Required payload memory length.
+     * @param [out] hdr_mem_size: Required header memory size.
+     * @param [out] pld_mem_size: Required payload memory size.
      *
      * @return: Return status of the operation.
      */
-    ReturnStatus get_memory_length(size_t& hdr_mem_len, size_t& pld_mem_len);
+    ReturnStatus get_total_ipo_streams_memory_size(size_t& hdr_mem_size, size_t& pld_mem_size);
     /**
-     * @brief: Allocate memory and align it to page size.
+     * @brief: Allocates memory and aligns it to page size.
      *
      * @param [in] size: Requested allocation size.
      *
      * @return: Pointer to allocated memory.
      */
-    byte_ptr_t allocate_and_align(size_t size);
+    byte_t* allocate_and_align(size_t size);
 };
 
 } // namespace rmax_xstream_media_sender

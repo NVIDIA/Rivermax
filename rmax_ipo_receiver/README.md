@@ -78,6 +78,22 @@ sequence number, consisting of 16 low order RTP sequence number bits and 16
 high order bits from the start of RTP payload (enabled by `--ext-seq-num`
 flag).
 
+The `--register-memory` command-line flag reduces the number of memory keys in
+use by registering all the memory in a single pass on application side. Can be
+used only together with non-zero `-e` or `--app-hdr-size` parameter.
+
+### Memory allocation
+
+The application supports memory allocator selection via command-line key `-A`
+or `--allocator-type`. The following types are available:
+* auto - Automatic selection (default).
+* gpu - Allocate GPU memory. Currently not supported by this application.
+* malloc - malloc memory allocation using system-default page size.
+* hugepage - Huge Page allocation using system-default huge page size.
+* hugepage-2m - Allocate 2 MB huge pages.
+* hugepage-512m - Allocate 512 MB huge pages.
+* hugepage-1g - Allocate 1024 MB huge pages.
+
 ### Example #1: _Receiving a single stream_
 
 This example demonstrates receiving a single stream sent from a sender with
@@ -115,7 +131,7 @@ buffers are also allocated in RAM.
 sudo ./rmax_ipo_receiver --local-ips 192.168.1.2,192.168.2.3 --src-ips 192.168.1.3,192.168.2.4 --dst-ips 239.4.4.4,239.4.4.5 -p 45678,56789 --app-hdr-size 40 --payload-size 1420
 ```
 
-## Example #4: _Receiving multiple streams_
+### Example #4: _Receiving multiple streams_
 
 This example demonstrates how to receive multiple redundant streams using the
 same application process. Streams:
