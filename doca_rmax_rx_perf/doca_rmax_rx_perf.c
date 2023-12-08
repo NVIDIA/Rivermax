@@ -20,6 +20,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdnoreturn.h>
+#include <stdbool.h>
+#include <string.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -1290,7 +1292,8 @@ bool run_recv_loop(const struct perf_app_config *config, struct globals *globals
 			return false;
 		if (config->sleep_us > 0) {
 			if (usleep(config->sleep_us) != 0) {
-				DOCA_LOG_ERR("usleep error: %s", strerror(errno));
+				if (errno != EINTR)
+					DOCA_LOG_ERR("usleep error: %s", strerror(errno));
 				return false;
 			}
 		}
