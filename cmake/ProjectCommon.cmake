@@ -73,9 +73,11 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
     target_compile_definitions(app_compilation_flags INTERFACE 
+        _AMD64_ AMD64
         _UNICODE UNICODE
         _WINSOCK_DEPRECATED_NO_WARNINGS
         _CRT_SECURE_NO_WARNINGS
+        NOMINMAX
     )
     set(RIVERMAX_COMMON_CXX_FLAGS /W3)
 else()

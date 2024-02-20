@@ -90,7 +90,8 @@ if (RmaxAppsLib_FOUND)
     # Create RmaxAppsLib::RmaxAppsLib as complete target library for applications
     if (NOT TARGET RmaxAppsLib::RmaxAppsLib)
         # Find all source files of this library
-        file(GLOB_RECURSE RMAX_APPS_LIB_SOURCES "${RMAX_APPS_LIB}/**/*.cpp")
+        file(GLOB_RECURSE RMAX_APPS_LIB_SOURCES "${RMAX_APPS_LIB}/api/**.cpp" "${RMAX_APPS_LIB}/io_node/**.cpp" "${RMAX_APPS_LIB}/lib/**.cpp")
+        list(APPEND RMAX_APPS_LIB_SOURCES "${RMAX_APPS_LIB}/apps/rmax_base_app.cpp")
 
         add_library(RmaxAppsLib)
 
@@ -107,7 +108,7 @@ if (RmaxAppsLib_FOUND)
             "${RMAX_APPS_LIB}/lib"
             "${RMAX_APPS_LIB}/io_node"
         )
-        target_link_libraries(RmaxAppsLib PUBLIC Rivermax::Rivermax Utils::RtThread)
+        target_link_libraries(RmaxAppsLib PUBLIC apps_common_base Rivermax::Rivermax Utils::RtThread)
 
         add_library(RmaxAppsLib::RmaxAppsLib ALIAS RmaxAppsLib)
     endif()
