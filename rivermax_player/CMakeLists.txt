@@ -48,6 +48,6 @@ target_sources(rivermax_player
 )
 
 include(FetchFFmpeg)
-find_package(Rivermax 1.20.10 REQUIRED)
+find_package(Rivermax 1.41.11 REQUIRED)
 find_package(FFmpeg REQUIRED)
 target_link_libraries(rivermax_player PRIVATE apps_common_base Rivermax::Rivermax FFmpeg::FFmpeg)

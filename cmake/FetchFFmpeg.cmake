@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,12 +17,12 @@ list(APPEND CMAKE_PREFIX_PATH ${PROJECT_BINARY_DIR})
 message("-- Detecting/fetching ffmpeg...")
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Windows" AND ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "AMD64")
-  set(RIVERMAX_FFMPEG_RELEASE "ffmpeg-master-latest-win64-lgpl-shared.zip")
+  set(RIVERMAX_FFMPEG_RELEASE "ffmpeg-N-113852-g4a134eb14a-win64-lgpl-shared.zip")
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
   if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "x86_64" OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "amd64")
-    set(RIVERMAX_FFMPEG_RELEASE "ffmpeg-master-latest-linux64-lgpl-shared.tar.xz")
+    set(RIVERMAX_FFMPEG_RELEASE "ffmpeg-N-113852-g4a134eb14a-linux64-lgpl-shared.tar.xz")
   elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL aarch64)
-    set(RIVERMAX_FFMPEG_RELEASE "ffmpeg-master-latest-linuxarm64-lgpl-shared.tar.xz")
+    set(RIVERMAX_FFMPEG_RELEASE "ffmpeg-N-113852-g4a134eb14a-linuxarm64-lgpl-shared.tar.xz")
   endif()
 endif()
 
@@ -34,9 +34,13 @@ if (NOT "${PROJECT_BINARY_DIR}/.local" IN_LIST "${CMAKE_PREFIX_PATH}")
   list(APPEND CMAKE_PREFIX_PATH "${PROJECT_BINARY_DIR}/.local")
 endif()
 
+set(ffmpeg_source_url "https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2024-02-29-13-02/${RIVERMAX_FFMPEG_RELEASE}")
+set(ffmpeg_source_dir "${PROJECT_BINARY_DIR}/.local")
+
 include(FetchContent)
-FetchContent_Declare(FFmpeg
-  URL  "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/${RIVERMAX_FFMPEG_RELEASE}"
-  SOURCE_DIR "${PROJECT_BINARY_DIR}/.local"  
-)
+if(POLICY CMP0135)
+  FetchContent_Declare(FFmpeg URL "${ffmpeg_source_url}" SOURCE_DIR  "${ffmpeg_source_dir}" DOWNLOAD_EXTRACT_TIMESTAMP ON)
+else()
+  FetchContent_Declare(FFmpeg URL "${ffmpeg_source_url}" SOURCE_DIR  "${ffmpeg_source_dir}")
+endif()
 FetchContent_MakeAvailable(FFmpeg)

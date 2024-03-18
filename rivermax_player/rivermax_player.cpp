@@ -75,6 +75,19 @@ using namespace moodycamel;
 
 #define RMAX_PLAYER_AFFINITY "RMAX_PLAYER_AFFINITY"
 
+enum class rivermax_clock_types
+{
+    SYSTEM_CLOCK       = (1ul << 0),
+    USER_CLOCK_HANDLER = (1ul << 1),
+    PTP_CLOCK          = (1ul << 2),
+};
+
+static const std::map<std::string, rivermax_clock_types> CLOCK_TYPES_MAPPING{
+    { "system", rivermax_clock_types::SYSTEM_CLOCK },
+    { "user",   rivermax_clock_types::USER_CLOCK_HANDLER },
+    { "ptp",    rivermax_clock_types::PTP_CLOCK },
+};
+
 uint64_t rivermax_player_time_handler(void*)
 {
     return (uint64_t)duration_cast<nanoseconds>((system_clock::now() + seconds{LEAP_SECONDS}).time_since_epoch()).count();
@@ -83,9 +96,9 @@ uint64_t rivermax_player_time_handler(void*)
 uint64_t rivermax_time_handler(void*)
 {
     uint64_t time = 0;
-    if (RMAX_OK != rmax_get_time(RMAX_CLOCK_PTP, &time)) {
+    if (RMX_OK != rmx_get_time(RMX_TIME_PTP, &time)) {
         std::cout << "Failed to retrieve Rivermax time" << std::endl;
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     return time;
 }
@@ -929,7 +942,7 @@ uint8_t even_parity(uint32_t number)
 #endif
 
 PACK(struct ancillary_rtp_header {
-    rtp_header s_rtp_hader;
+    rtp_header s_rtp_header;
     uint16_t extended_sequence_number;  // Extended Sequence Number: 16 bits
     uint16_t length;  // Length: 16 bits
     uint8_t anc_count;  // ANC_Count: 8 bits
@@ -1056,20 +1069,20 @@ void RtpAncillaryHeaderBuilder::fill_chunk(uint8_t *buff, uint16_t *payload_size
         memset(buff, 0, m_packet_stride_size);
         ancillary_rtp_header* p_anc_rtp_hdr = (struct ancillary_rtp_header*)&buff[0];
         //RTP header initialization
-        p_anc_rtp_hdr->s_rtp_hader.version = 2;
-        p_anc_rtp_hdr->s_rtp_hader.extension = 0;
-        p_anc_rtp_hdr->s_rtp_hader.cc = 0;
-        p_anc_rtp_hdr->s_rtp_hader.marker = 1;
-        p_anc_rtp_hdr->s_rtp_hader.payload_type = m_payload_type;
-        p_anc_rtp_hdr->s_rtp_hader.sequence_number = htobe16((uint16_t)m_seq_num);
-        p_anc_rtp_hdr->s_rtp_hader.timestamp = htobe32((uint32_t)time_to_rtp_timestamp(send_time_ns, 90000));
+        p_anc_rtp_hdr->s_rtp_header.version = 2;
+        p_anc_rtp_hdr->s_rtp_header.extension = 0;
+        p_anc_rtp_hdr->s_rtp_header.cc = 0;
+        p_anc_rtp_hdr->s_rtp_header.marker = 1;
+        p_anc_rtp_hdr->s_rtp_header.payload_type = m_payload_type;
+        p_anc_rtp_hdr->s_rtp_header.sequence_number = htobe16((uint16_t)m_seq_num);
+        p_anc_rtp_hdr->s_rtp_header.timestamp = htobe32((uint32_t)time_to_rtp_timestamp(send_time_ns, 90000));
         p_anc_rtp_hdr->f = m_field;
 
         if (m_video_type != VIDEO_TYPE::PROGRESSIVE) {
             m_field = (interlace_first_field_value == m_field)? interlace_second_field_value : interlace_first_field_value;
         }
 
-        p_anc_rtp_hdr->s_rtp_hader.ssrc = htobe32(0x0eb51dbf);
+        p_anc_rtp_hdr->s_rtp_header.ssrc = htobe32(0x0eb51dbf);
 
         //Payload Header initialization
         p_anc_rtp_hdr->extended_sequence_number = htobe16((uint16_t)(m_seq_num>>16));
@@ -1433,30 +1446,26 @@ void rivermax_ancillary_sender(AncillaryRmaxData data)
     if (unlikely(!run_threads)) {
         return;
     }
+
+    constexpr size_t packets_per_frame = 1;
     const size_t num_of_chunks = 100 * (size_t)data.fps;
-    const size_t samples_in_stride = 1;
-    const size_t strides_in_chunk = 1;
+    constexpr size_t samples_in_stride = 1;
+    constexpr size_t strides_in_chunk = 1;
     const size_t payload_size = 236;
     const size_t payload_size_with_rtp = payload_size + 20;  // ERTP header size
     const size_t packet_stride_size = river_align_up_pow2(payload_size_with_rtp, get_cache_line_size()); // align to cache line
 
-    rmax_mem_block block;
-    memset(&block, 0, sizeof(block));
+    constexpr size_t block_count = 1;
+    rmx_output_media_mem_block ancillary_block;
+    rmx_output_media_init_mem_blocks(&ancillary_block, block_count);
+    rmx_output_media_set_chunk_count(&ancillary_block, num_of_chunks);
 
-    block.chunks_num = num_of_chunks;
-    block.data_size_arr = nullptr; //data_size_arr must be set to NULL in dynamic mode
+    // Anc data uses dynamic_mode and we don't need toset packet layout
 
-    rmax_buffer_attr buffer_attr;
-    memset(&buffer_attr, 0, sizeof(buffer_attr));
-
-    rmax_qos_attr qos;
-    memset(&qos, 0, sizeof(qos));
-
-    buffer_attr.chunk_size_in_strides = strides_in_chunk;
-    buffer_attr.mem_block_array = &block;
-    buffer_attr.mem_block_array_len = 1;
-    buffer_attr.data_stride_size = (uint16_t)packet_stride_size;
-    buffer_attr.app_hdr_stride_size = 0;
+    // HDS isn't used so we only have one sub block
+    constexpr size_t subblock_count = 1;
+    constexpr size_t subblock_id = subblock_count-1;
+    rmx_output_media_set_sub_block_count(&ancillary_block, subblock_count);
 
     std::ifstream is(data.sdp_path);
     std::string sdp_cont((std::istreambuf_iterator<char>(is)),
@@ -1471,10 +1480,23 @@ void rivermax_ancillary_sender(AncillaryRmaxData data)
         frames_fields_per_sec *= 2;
     }
 
-    rmax_stream_id stream_id;
-    rmax_status_t status = rmax_out_create_stream(const_cast<char*>(sdp_cont.c_str()),
-        &buffer_attr, &qos, 1, 2 /* ancillary stream index */, &stream_id);
-    if (status != RMAX_OK) {
+    // Setup ancillary stream settings
+    rmx_output_media_stream_params stream_params;
+    memset(&stream_params, 0, sizeof(stream_params));
+    rmx_output_media_init(&stream_params);
+    rmx_output_media_set_sdp(&stream_params, sdp_cont.c_str());
+    rmx_output_media_assign_mem_blocks(&stream_params, &ancillary_block, block_count);
+    rmx_output_media_set_packets_per_frame(&stream_params, packets_per_frame);
+    rmx_output_media_set_packets_per_chunk(&stream_params, strides_in_chunk);
+    rmx_output_media_set_stride_size(&stream_params, subblock_id, packet_stride_size);
+
+    constexpr size_t media_block_index = 2;
+    rmx_output_media_set_idx_in_sdp(&stream_params, media_block_index);
+
+    rmx_stream_id stream_id;
+    rmx_status status = rmx_output_media_create_stream(&stream_params, &stream_id);
+
+    if (status != RMX_OK) {
         std::cerr << "failed creating ancillary output stream, got status:" << status;
         run_threads = false;
         data.notify_all_cv();
@@ -1493,10 +1515,15 @@ void rivermax_ancillary_sender(AncillaryRmaxData data)
         , data.video_type
     );
 
+    rmx_output_media_chunk_handle chunk_handle;
+    rmx_output_media_init_chunk_handle(&chunk_handle, stream_id);
+
     go_to_sleep((uint64_t)*data.next_chunk_send_time_ns, (uint64_t)nanoseconds{seconds{1}}.count());
-    rmax_commit_flags_t c_flags{};
 
     std::cout << "Ancillary sender is on!" << std::endl;
+
+    uint8_t* payload = nullptr;
+    uint16_t* payload_sizes_ptr = nullptr;
 
     while (likely(!exit_app()) && run_threads) {
         double start_send_time_ns = *data.next_chunk_send_time_ns;
@@ -1507,21 +1534,22 @@ void rivermax_ancillary_sender(AncillaryRmaxData data)
                 go_to_sleep((uint64_t)*data.next_chunk_send_time_ns, (uint64_t)nanoseconds{milliseconds{ancillary_wakeup_delta_ms}}.count());
             }
 
-            void *chunk_buffer = nullptr;
-            uint16_t *payload_sizes_ptr = nullptr;
+            // Prepare next chunk to be fetched with the desired size
+            rmx_output_media_set_chunk_packet_count(&chunk_handle, strides_in_chunk);
+
             do {
-                status = rmax_out_get_next_chunk_dynamic(stream_id,
-                    &chunk_buffer,
-                    nullptr,
-                    strides_in_chunk,
-                    &payload_sizes_ptr,
-                    nullptr);  //In this example we don't use dynamic user header sizes.
-                if (unlikely(status == RMAX_SIGNAL)) {
+                status = rmx_output_media_get_next_chunk(&chunk_handle);
+
+                if (unlikely(status == RMX_SIGNAL)) {
+                    std::cout << "Received CTRL-C, exiting..." << std::endl;
                     goto end;
                 }
-            } while (status != RMAX_OK);
+            } while (status != RMX_OK);
 
-            chunk_builder.fill_chunk((uint8_t*)chunk_buffer, payload_sizes_ptr, *data.next_chunk_send_time_ns);
+            payload_sizes_ptr = rmx_output_media_get_chunk_packet_sizes(&chunk_handle, subblock_id);
+            payload = static_cast<uint8_t*>(rmx_output_media_get_chunk_strides(&chunk_handle, subblock_id));
+
+            chunk_builder.fill_chunk(payload, payload_sizes_ptr, *data.next_chunk_send_time_ns);
             do {
                 uint64_t timeout = (uint64_t)*data.next_chunk_send_time_ns;
                 if (unlikely(timeout + 600 < get_tai_time_ns())) {
@@ -1535,15 +1563,15 @@ void rivermax_ancillary_sender(AncillaryRmaxData data)
                     */
                     timeout = align_to_rmax_time(timeout);
                 }
-                status = rmax_out_commit(stream_id, timeout, c_flags);
-                if (status == RMAX_ERR_HW_COMPLETION_ISSUE) {
+                status = rmx_output_media_commit_chunk(&chunk_handle, timeout);
+                if (status == RMX_HW_COMPLETION_ISSUE) {
                     std::cout << "got completion issue exiting" << std::endl;
                     goto end;
                 }
-                if (unlikely(status == RMAX_SIGNAL)) {
+                if (unlikely(status == RMX_SIGNAL)) {
                     goto end;
                 }
-            } while (status != RMAX_OK);
+            } while (status != RMX_OK);
         }
 
         if (!loop) {
@@ -1564,11 +1592,21 @@ void rivermax_ancillary_sender(AncillaryRmaxData data)
     }
 end:
     std::cout << "Done sending ancillary" << std::endl;
-    rmax_out_cancel_unsent_chunks(stream_id);
+
+    status = rmx_output_media_cancel_unsent_chunks(&chunk_handle);
+    if (status != RMX_OK) {
+        std::cerr << "Failed to cancel unsent chunk, got status: " << status << std::endl;
+    }
+
     do {
         std::this_thread::sleep_for(milliseconds{300});
-        status = rmax_out_destroy_stream(stream_id);
-    } while (status == RMAX_ERR_BUSY);
+        status = rmx_output_media_destroy_stream(stream_id);
+    } while (status == RMX_BUSY);
+
+    if (status != RMX_OK) {
+        std::cerr << "Failed to destroy stream, got status: " << status << std::endl;
+    }
+
     // Notify all other waiting threads that current thread is finished
     data.notify_all_cv();
 }
@@ -1591,35 +1629,41 @@ void rivermax_audio_sender(AudioRmaxData data)
         (uint16_t)(bit_depth_in_bytes * data.channels * samples_in_stride);
     const uint16_t payload_size_with_rtp = payload_size + RTP_HEADER_SIZE;
     const uint16_t packet_stride_size = river_align_up_pow2(payload_size_with_rtp, get_cache_line_size()); // align to cache line
+
+    constexpr size_t block_count = 1;
+    rmx_output_media_mem_block audio_block;
+    rmx_output_media_init_mem_blocks(&audio_block, block_count);
+    rmx_output_media_set_chunk_count(&audio_block, num_of_chunks);
+
+    // HDS isn't used so we only have one sub block
+    constexpr size_t subblock_count = 1;
+    constexpr size_t subblock_id = subblock_count - 1;
+    rmx_output_media_set_sub_block_count(&audio_block, subblock_count);
+
     std::vector<uint16_t> sizes;
-
     sizes.resize(strides_in_chunk * num_of_chunks, payload_size_with_rtp);
-
-    rmax_mem_block block;
-    memset(&block, 0, sizeof(block));
-
-    block.chunks_num = num_of_chunks;
-    block.data_size_arr = sizes.data();
-
-    rmax_buffer_attr buffer_attr;
-    memset(&buffer_attr, 0, sizeof(buffer_attr));
-
-    rmax_qos_attr qos = { data.dscp, 0 };
-
-    buffer_attr.chunk_size_in_strides = strides_in_chunk;
-    buffer_attr.mem_block_array = &block;
-    buffer_attr.mem_block_array_len = 1;
-    buffer_attr.data_stride_size = packet_stride_size;
-    buffer_attr.app_hdr_stride_size = 0;
+    rmx_output_media_set_packet_layout(&audio_block, subblock_id, sizes.data());
 
     std::ifstream is(data.sdp_path);
     std::string sdp_cont((std::istreambuf_iterator<char>(is)),
         std::istreambuf_iterator<char>());
 
-    rmax_stream_id stream_id;
-    rmax_status_t status = rmax_out_create_stream(const_cast<char*>(sdp_cont.c_str()),
-        &buffer_attr, &qos, 0, 1 /*audio stream index*/, &stream_id);
-    if (status != RMAX_OK) {
+    // Setup audio stream settings
+    rmx_output_media_stream_params stream_params;
+    rmx_output_media_init(&stream_params);
+    rmx_output_media_set_sdp(&stream_params, sdp_cont.c_str());
+    rmx_output_media_assign_mem_blocks(&stream_params, &audio_block, block_count);
+    rmx_output_media_set_dscp(&stream_params, data.dscp);
+    rmx_output_media_set_packets_per_frame(&stream_params, sizes.size());
+    rmx_output_media_set_packets_per_chunk(&stream_params, strides_in_chunk);
+    rmx_output_media_set_stride_size(&stream_params, subblock_id, packet_stride_size);
+
+    constexpr size_t media_block_index = 1;
+    rmx_output_media_set_idx_in_sdp(&stream_params, media_block_index);
+
+    rmx_stream_id stream_id;
+    rmx_status status = rmx_output_media_create_stream(&stream_params, &stream_id);
+    if (status != RMX_OK) {
         std::cerr << "failed creating audio output stream, got status:" << status;
         run_threads = false;
         data.notify_all_cv();
@@ -1646,6 +1690,9 @@ void rivermax_audio_sender(AudioRmaxData data)
         return;
     }
 
+    rmx_output_media_chunk_handle chunk_handle;
+    rmx_output_media_init_chunk_handle(&chunk_handle, stream_id);
+
     uint64_t frame_send_time_ns = (uint64_t)nanoseconds{milliseconds{(uint64_t)strides_in_chunk}}.count();
     go_to_sleep((uint64_t)*data.next_chunk_send_time_ns, (uint64_t)nanoseconds{seconds{1}}.count());
 
@@ -1657,7 +1704,7 @@ start:
     const uint32_t number_of_arrs = 2;
     std::shared_ptr<AVPacket> sptr_av_packet_arr[number_of_arrs][num_of_av_packet_in_chunk];
     while (likely(!exit_app()) && run_threads) {
-        rmax_commit_flags_t c_flags{};
+        bool pause_after_commit = false;
         for (size_t i = 0; i < num_of_av_packet_in_chunk; ++i) {
             std::shared_ptr<queued_data> qdata;
             data.send_cb->try_dequeue(qdata);
@@ -1670,7 +1717,7 @@ start:
 
             data.send_cv->notify_one();
             if (qdata->queued_data_info == queued_data::e_qdi_eof) {
-                c_flags = RMAX_PAUSE_AFTER_COMMIT;
+                pause_after_commit = true;
                 break;
             }
 
@@ -1685,15 +1732,25 @@ start:
         }
 
         //Build chunk
-        void *chunk_buffer = nullptr;
         do {
-            status = rmax_out_get_next_chunk(stream_id, &chunk_buffer, nullptr);
-            if (unlikely(status == RMAX_SIGNAL)) {
+            status = rmx_output_media_get_next_chunk(&chunk_handle);
+
+            if (pause_after_commit) {
+                rmx_output_media_set_chunk_option(&chunk_handle, RMX_OUTPUT_PAUSE_AFTER_COMMIT);
+            }
+
+            if (status == RMX_NO_FREE_CHUNK && !disable_wait_for_event) {
+                event_mgr.request_notification(stream_id);
+            }
+
+            if (unlikely(status == RMX_SIGNAL)) {
                 goto end;
             }
-        } while (status != RMAX_OK);
+        } while (status != RMX_OK);
 
-        chunk_builder.fill_chunk((uint8_t*)chunk_buffer, sptr_av_packet_arr[arr_index]);
+        uint8_t* chunk_buffer = static_cast<uint8_t*>(rmx_output_media_get_chunk_strides(&chunk_handle, subblock_id));
+        chunk_builder.fill_chunk(chunk_buffer, sptr_av_packet_arr[arr_index]);
+
         do {
             /*
             * When timer handler callback is not used we have a mismatch between
@@ -1701,22 +1758,21 @@ start:
             * To fix this we are calling to align_to_rmax_time function to convert
             * @time from TAI to UTC
             */
-            status = rmax_out_commit(stream_id, align_to_rmax_time((uint64_t)*data.next_chunk_send_time_ns), c_flags);
-            if (status == RMAX_ERR_NO_FREE_CHUNK && !disable_wait_for_event) {
-                event_mgr.request_notification(stream_id);
-            }
-            if (status == RMAX_ERR_HW_COMPLETION_ISSUE) {
+            const uint64_t send_time = align_to_rmax_time((uint64_t)*data.next_chunk_send_time_ns);
+            status = rmx_output_media_commit_chunk(&chunk_handle, send_time);
+
+            if (status == RMX_HW_COMPLETION_ISSUE) {
                 std::cout << "got completion issue exiting" << std::endl;
                 goto end;
             }
-            if (unlikely(status == RMAX_SIGNAL)) {
+            if (unlikely(status == RMX_SIGNAL)) {
                 goto end;
             }
-        } while (status != RMAX_OK);
+        } while (status != RMX_OK);
         *data.next_chunk_send_time_ns += (double)frame_send_time_ns;
         arr_index = (arr_index + 1) % number_of_arrs;
 
-        if (c_flags & RMAX_PAUSE_AFTER_COMMIT) {
+        if (pause_after_commit) {
             if (!loop) {
                 goto end;
             }
@@ -1735,11 +1791,21 @@ start:
 
 end:
     std::cout << "done sending audio" << std::endl;
-    rmax_out_cancel_unsent_chunks(stream_id);
+
+    status = rmx_output_media_cancel_unsent_chunks(&chunk_handle);
+    if (status != RMX_OK) {
+        std::cerr << "Failed to cancel unsent chunk, got status: " << status << std::endl;
+    }
+
     do {
         std::this_thread::sleep_for(milliseconds{300});
-        status = rmax_out_destroy_stream(stream_id);
-    } while (status == RMAX_ERR_BUSY);
+        status = rmx_output_media_destroy_stream(stream_id);
+    } while (status == RMX_BUSY);
+
+    if (status != RMX_OK) {
+        std::cerr << "Failed to destroy stream, got status: " << status << std::endl;
+    }
+
     // Notify all other waiting threads that current thread is finished
     data.notify_all_cv();
 }
@@ -1831,11 +1897,6 @@ void rivermax_video_sender(VideoRmaxData data)
     // sizes must have zeroes at the end to complete to this size
     sizes.resize(chunks_num_per_frame_or_field * strides_in_chunk, 0);
 
-    rmax_buffer_attr buffer_attr;
-    memset(&buffer_attr, 0, sizeof(buffer_attr));
-    rmax_qos_attr qos;
-    memset(&qos, 0, sizeof(qos));
-
     // can be any number bigger then 1
     int mem_block_size = (int)(data.fps / 2);
     double frame_field_time_interval_ns = ((double)nanoseconds{seconds{1}}.count())/data.fps;
@@ -1846,25 +1907,37 @@ void rivermax_video_sender(VideoRmaxData data)
         packets_in_frame *= 2;
     }
 
-    std::vector<rmax_mem_block> block(mem_block_size);
+    std::vector<rmx_output_media_mem_block> video_blocks(mem_block_size);
+    rmx_output_media_init_mem_blocks(video_blocks.data(), mem_block_size);
 
+    constexpr size_t subblock_count = 1;
+    constexpr size_t subblock_id = subblock_count - 1;
     for (int i = 0; i < mem_block_size; i++) {
-        block[i].chunks_num = chunks_num_per_frame_or_field;
-        block[i].data_size_arr = sizes.data();
+        rmx_output_media_set_chunk_count(&video_blocks[i], chunks_num_per_frame_or_field);
+
+        rmx_output_media_set_sub_block_count(&video_blocks[i], subblock_count);
+        rmx_output_media_set_packet_layout(&video_blocks[i], subblock_id, sizes.data());
     }
-    buffer_attr.chunk_size_in_strides = strides_in_chunk;
-    buffer_attr.mem_block_array = block.data();
-    buffer_attr.mem_block_array_len = mem_block_size;
-    buffer_attr.data_stride_size = packet_stride;
 
     std::ifstream is(data.sdp_path);
     std::string sdp_cont((std::istreambuf_iterator<char>(is)),
         std::istreambuf_iterator<char>());
-    rmax_stream_id stream_id;
-    rmax_status_t status = rmax_out_create_stream(const_cast<char*>(sdp_cont.c_str()),
-        &buffer_attr, &qos,
-        packets_in_frame, 0 /* video stream index */, &stream_id);
-    if (status != RMAX_OK) {
+
+    // Setup video stream settings
+    rmx_output_media_stream_params stream_params;
+    rmx_output_media_init(&stream_params);
+    rmx_output_media_set_sdp(&stream_params, sdp_cont.c_str());
+    rmx_output_media_assign_mem_blocks(&stream_params, video_blocks.data(), mem_block_size);
+    rmx_output_media_set_packets_per_frame(&stream_params, packets_in_frame);
+    rmx_output_media_set_packets_per_chunk(&stream_params, strides_in_chunk);
+    rmx_output_media_set_stride_size(&stream_params, subblock_id, packet_stride);
+
+    constexpr size_t media_block_index = 0;
+    rmx_output_media_set_idx_in_sdp(&stream_params, media_block_index);
+
+    rmx_stream_id stream_id;
+    rmx_status status = rmx_output_media_create_stream(&stream_params, &stream_id);
+    if (status != RMX_OK) {
         std::cerr << "failed creating video output stream, got status:" << status;
         run_threads = false;
         data.notify_all_cv();
@@ -1890,7 +1963,9 @@ void rivermax_video_sender(VideoRmaxData data)
         data.notify_all_cv();
         return;
     }
-    rmax_commit_flags_t c_flags{};
+
+    rmx_output_media_chunk_handle chunk_handle;
+    rmx_output_media_init_chunk_handle(&chunk_handle, stream_id);
 
     go_to_sleep((uint64_t)*data.next_frame_field_send_time_ns, (uint64_t)nanoseconds{seconds{1}}.count());
     std::cout << "Video sender is on!" << std::endl;
@@ -1936,16 +2011,20 @@ start:
             frame_field_builder.m_Cr = &av_frame->data[2][0];
             frame_field_builder.set_counters();
             for (uint32_t chunk = 0; chunk < chunks_num_per_frame_or_field && sd.packet_counter < packets_in_frame_or_field; ++chunk) {
-                uint8_t *chunk_buffer;
                 do {
-                    status = rmax_out_get_next_chunk(stream_id, (void**)&chunk_buffer, nullptr);
-                    if (status == RMAX_ERR_NO_FREE_CHUNK && !disable_wait_for_event) {
+                    status = rmx_output_media_get_next_chunk(&chunk_handle);
+
+                    if (status == RMX_NO_FREE_CHUNK && !disable_wait_for_event) {
                         event_mgr.request_notification(stream_id);
                     }
-                    if (unlikely(status == RMAX_SIGNAL)) {
+
+                    if (unlikely(status == RMX_SIGNAL)) {
                         goto end;
                     }
-                } while (status != RMAX_OK);
+                } while (status != RMX_OK);
+
+                uint8_t* chunk_buffer = static_cast<uint8_t*>(rmx_output_media_get_chunk_strides(&chunk_handle, subblock_id));
+
                 // fill chunk
                 for (int stride = 0; stride < strides_in_chunk &&
                      sd.packet_counter < packets_in_frame_or_field; ++stride, ++sd.packet_counter) {
@@ -1977,15 +2056,17 @@ start:
                             get_tai_time_ns() << std::endl;
     #endif
                     }
-                    status = rmax_out_commit(stream_id, timeout, c_flags);
-                    if (status == RMAX_ERR_HW_COMPLETION_ISSUE) {
+
+                    status = rmx_output_media_commit_chunk(&chunk_handle, timeout);
+
+                    if (status == RMX_HW_COMPLETION_ISSUE) {
                         std::cout << "got completion issue exiting" << std::endl;
                         goto end;
                     }
-                    if (unlikely(status == RMAX_SIGNAL)) {
+                    if (unlikely(status == RMX_SIGNAL)) {
                         goto end;
                     }
-                } while (status != RMAX_OK);
+                } while (status != RMX_OK);
             }
 
             if (data.video_type != VIDEO_TYPE::PROGRESSIVE) {
@@ -1999,11 +2080,21 @@ start:
     }
 end:
     std::cout << "done sending video" << std::endl;
-    rmax_out_cancel_unsent_chunks(stream_id);
+
+    status = rmx_output_media_cancel_unsent_chunks(&chunk_handle);
+    if (status != RMX_OK) {
+        std::cerr << "Failed to cancel unsent chunk, got status: " << status << std::endl;
+    }
+
     do {
         std::this_thread::sleep_for(milliseconds{300});
-        status = rmax_out_destroy_stream(stream_id);
-    } while (status == RMAX_ERR_BUSY);
+        status = rmx_output_media_destroy_stream(stream_id);
+    } while (status == RMX_BUSY);
+
+    if (status != RMX_OK) {
+        std::cerr << "Failed to destroy stream, got status: " << status << std::endl;
+    }
+
     // Notify all other waiting threads that current thread is finished
     data.notify_all_cv();
 }
@@ -2451,7 +2542,7 @@ bool audio_process_file(const char *file_path, AudioRmaxData &audio_rmax_data,
         if (p_local_codec_parameters->codec_type == AVMEDIA_TYPE_AUDIO &&
             p_local_codec_parameters->channels == media_data.channels_num) {
             audio_stream_index = i;
-            p_audio_codec = avcodec_find_decoder(p_local_codec_parameters->codec_id);;
+            p_audio_codec = avcodec_find_decoder(p_local_codec_parameters->codec_id);
             p_audio_codec_parameters = p_local_codec_parameters;
             break;
         }
@@ -2564,62 +2655,88 @@ static void check_sdp_dst_ips(const std::string &sdp, size_t pos_start, size_t &
         if (!assert_mc_ip(dst_ip, START_AVAILABLE_MC_ADDR_JT_NM, END_AVAILABLE_MC_ADDR_JT_NM)) {
             std::cerr << "Atempting to use a multicast address in the deny list. All multicast addresses should be in the range between: " <<
                 START_AVAILABLE_MC_ADDR_JT_NM << " and " << END_AVAILABLE_MC_ADDR_JT_NM << std::endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
     } catch (std::runtime_error &e) {
         std::cerr << "Error: " << e.what() << std::endl;
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     pos_start = pos_end;
     return check_sdp_dst_ips(sdp.substr(pos_start, sdp.length() - pos_start), pos_start, pos_end);
 }
 
-static bool set_clock(rmax_clock_types clock_handler_type, std::vector<std::string> sdp_files)
+static bool set_clock(rivermax_clock_types clock_handler_type, const std::vector<std::string>& sdp_files)
 {
-    rmax_clock_t clock;
-    memset(&clock, 0, sizeof(clock));
+    rmx_status status = RMX_OK;
 
-    clock.clock_type = clock_handler_type;
-
-    if (RIVERMAX_SYSTEM_CLOCK == clock_handler_type) {
+    switch (clock_handler_type) {
+    case rivermax_clock_types::SYSTEM_CLOCK: {
         p_get_current_time_ns = rivermax_player_time_handler;
         /* Leap sec in nano for TAI conversion to UTC */
         g_tai_to_rmax_time_conversion = (uint64_t)nanoseconds{seconds{LEAP_SECONDS}}.count();
-    } else {
-        if (RIVERMAX_USER_CLOCK_HANDLER == clock_handler_type) {
-            clock.clock_u.rmax_user_clock_handler.clock_handler = rivermax_player_time_handler;
-            clock.clock_u.rmax_user_clock_handler.ctx = nullptr;
-            p_get_current_time_ns = rivermax_player_time_handler;
-        }
-        else if (RIVERMAX_PTP_CLOCK == clock_handler_type) {
-            std::string src_ip;
-            std::ifstream is(sdp_files[0]);
-            std::string sdp_file((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
-            if (!parse_sdp_connection_details(sdp_file, src_ip)) {
-                std::cerr << "failed parsing connection info!";
-                return false;
-            }
-            std::cout << "Note: PTP clock time handler is supported with ConnectX-6 Dx or DPU devices only" << std::endl;
-            inet_pton(AF_INET, src_ip.c_str(), &clock.clock_u.rmax_ptp_clock.device_ip_addr);
-            p_get_current_time_ns = rivermax_time_handler;
-        } else {
-            std::cerr << "Invalid clock handler type:" << clock_handler_type << std::endl;
+        break;
+    }
+    case rivermax_clock_types::USER_CLOCK_HANDLER: {
+        rmx_user_clock_params user_clock_params;
+        rmx_init_user_clock(&user_clock_params);
+        rmx_set_user_clock_handler(&user_clock_params, rivermax_player_time_handler);
+        rmx_set_user_clock_context(&user_clock_params, nullptr);
+        status = rmx_use_user_clock(&user_clock_params);
+        p_get_current_time_ns = rivermax_player_time_handler;
+        break;
+    }
+    case rivermax_clock_types::PTP_CLOCK: {
+        std::string src_ip;
+        std::ifstream is(sdp_files[0]);
+        std::string sdp_file((std::istreambuf_iterator<char>(is)), std::istreambuf_iterator<char>());
+        if (!parse_sdp_connection_details(sdp_file, src_ip)) {
+            std::cerr << "failed parsing connection info!";
             return false;
         }
+        std::cout << "Note: PTP clock time handler is supported with ConnectX-6 Dx or DPU devices only" << std::endl;
+
+        struct in_addr ptp_ip;
+        inet_pton(AF_INET, src_ip.c_str(), &ptp_ip);
+
+        rmx_device_iface device_interface;
+        status = rmx_retrieve_device_iface_ipv4(&device_interface, &ptp_ip);
+        if (status != RMX_OK) {
+            std::cerr << "Failed to get device interface for ip: " << src_ip << " with status: " << status << std::endl;
+            return false;
+        }
+
+        p_get_current_time_ns = rivermax_time_handler;
+        rmx_ptp_clock_params ptp_clock;
+        rmx_init_ptp_clock(&ptp_clock);
+        rmx_set_ptp_clock_device(&ptp_clock, &device_interface);
+        status = rmx_use_ptp_clock(&ptp_clock);
+        break;
+    }
+    default: {
+        std::cerr << "Invalid clock handler type:" << (uint8_t)clock_handler_type << std::endl;
+        return false;
+    }
     }
 
-    rmax_status_t status = rmax_set_clock(&clock);
-    if (status != RMAX_OK) {
+    if (status != RMX_OK) {
         std::cout << "failed set clock with status: " << status << std::endl;
         return false;
     }
     return true;
 }
 
+static void cleanup()
+{
+    const rmx_status status = rmx_cleanup();
+    if (status != RMX_OK) {
+        std::cerr << "Failed to clean up Rivermax with status: " << status << std::endl;
+    }
+}
+
 int main(int argc, char *argv[])
 {
-    int ret = 0;
+    int ret = EXIT_SUCCESS;
 
     std::vector<std::string> sdp_files;
     std::vector<std::string> video_files;
@@ -2629,9 +2746,9 @@ int main(int argc, char *argv[])
     uint16_t multiplier = VIDEO_TRO_DEFAULT_MODIFICATION;
     bool allow_v_padding = false;
     std::string streams_to_send;
-    int clock_handler_type = rmax_clock_types::RIVERMAX_USER_CLOCK_HANDLER;
+    rivermax_clock_types clock_handler_type = rivermax_clock_types::USER_CLOCK_HANDLER;
     bool assert_mc_addr = false;
-    const char *rmax_version = rmax_get_version_string();
+    const char *rmax_version = rmx_get_version_string();
     CLI::App app{"Mellanox Rivermax Player" + std::string(rmax_version)};
     app.add_option("-s,--sdp-files", sdp_files, "Comma separated list of SDP files")
         ->delimiter(',')->required()->check(CLI::ExistingFile);
@@ -2660,9 +2777,10 @@ int main(int argc, char *argv[])
     ->delimiter(',')->check(CLI::Range(CPU_NONE, 1024))->type_size(e_num_of_affinity_index);
     app.add_option("-o,--tro-modification", multiplier,
                    "Reduce video default TRO by this number of Trs")->check(CLI::Range(100));
-    app.add_option("-v", clock_handler_type, "clock handler type. "
-        "1:System clock handler, 2: User Clock handler, 4: PTP Clock handler . [default 2]")
-        ->check(CLI::Range((int)RIVERMAX_SYSTEM_CLOCK, (int)RIVERMAX_PTP_CLOCK));
+    app.add_option("-v", clock_handler_type, "Clock handler type")
+        ->transform(CLI::Transformer(CLOCK_TYPES_MAPPING))
+        ->check(CLI::Range((int)rivermax_clock_types::SYSTEM_CLOCK,
+                           (int)rivermax_clock_types::PTP_CLOCK));
     app.add_flag("--assert-mc_addr", assert_mc_addr, "Check that MC IP address in the range 224.0.2.0 - 239.255.255.255");
     CLI11_PARSE(app, argc, argv);
     if (app.count("-p") > 0) {
@@ -2687,16 +2805,16 @@ int main(int argc, char *argv[])
         }
         if (stream_type == 0 || !streams_to_send.empty()) {
             std::cerr << "invalid media type, options are a,v,n got : " << streams_to_send << std::endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
     }
     if (sdp_files.size() != video_files.size()) {
         std::cout << "Error - Number of SDP files differs from number of media files" << std::endl;
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
     if ((eMediaType_t::ancillary & stream_type) && !(eMediaType_t::video & stream_type)) {
         std::cout << "Error - Ancillary stream should be sent with video stream only" << std::endl;
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
 
     if (assert_mc_addr) {
@@ -2709,7 +2827,7 @@ int main(int argc, char *argv[])
             check_sdp_dst_ips(sdp_file, pos_start, pos_end);
         } catch (std::runtime_error &e) {
             std::cerr << "Error: " << e.what() << std::endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -2717,18 +2835,23 @@ int main(int argc, char *argv[])
     initialize_signals();
 
     video_tro_default_modification = multiplier;
-    rmax_init_config init_config;
 
-    memset(&init_config, 0, sizeof(init_config));
-
-    init_config.flags |= RIVERMAX_HANDLE_SIGNAL;
+    rmx_status status;
 
     if (rivermax_thread_affinity == CPU_NONE) {
         std::cout << "Warning - Rivermax internal thread CPU affinity not set!!!" << std::endl;
     } else {
-        RMAX_CPU_SET(rivermax_thread_affinity, &init_config.cpu_mask);
-        init_config.flags |= RIVERMAX_CPU_MASK;
+        const unsigned int num_cores = std::thread::hardware_concurrency();
+        constexpr size_t cores_per_mask = 8 * sizeof(uint64_t);
+        std::vector<uint64_t> core_mask(((num_cores + cores_per_mask - 1) / cores_per_mask), 0);
+        rmx_mark_cpu_for_affinity(core_mask.data(), rivermax_thread_affinity);
+        status = rmx_set_cpu_affinity(core_mask.data(), num_cores);
+        if (status != RMX_OK) {
+            rivermax_thread_affinity = CPU_NONE;
+            std::cerr << "Failed to set desired Rivermax CPU affinity with code:" << status << std::endl;
+        }
     }
+
     if (cpus.empty()) {
         cpus.resize(e_num_of_affinity_index, CPU_NONE);
     } else {
@@ -2737,35 +2860,34 @@ int main(int argc, char *argv[])
         }
     }
 
+    status = rmx_enable_system_signal_handling();
+    if (status != RMX_OK) {
+        std::cerr << "Failed to enable system signal handling with code:" << status << std::endl;
+        exit(EXIT_FAILURE);
+    }
 
-    rmax_status_t status = rmax_init(&init_config);
-    if (status != RMAX_OK) {
-        std::cerr << "rmax_init failed with code:" << status << std::endl;
-        exit(-1);
+    status = rmx_init();
+    if (status != RMX_OK) {
+        std::cerr << "Failed to initialize Rivermax with code:" << status << std::endl;
+        exit(EXIT_FAILURE);
     }
 
     // Set clock
-    if(!set_clock((rmax_clock_types)clock_handler_type, sdp_files)) {
-        if(!set_clock(rmax_clock_types::RIVERMAX_SYSTEM_CLOCK, sdp_files)) {
-            rmax_cleanup();
-            exit(-1);
+    if (!set_clock(clock_handler_type, sdp_files)) {
+        if (!set_clock(rivermax_clock_types::SYSTEM_CLOCK, sdp_files)) {
+            cleanup();
+            exit(EXIT_FAILURE);
         }
     }
 
-    static std::string media_version = std::to_string(RMAX_MAJOR_VERSION) + std::string(".") +
-                                       std::to_string(RMAX_MINOR_VERSION)+ std::string(".") +
-                                       std::to_string(RMAX_PATCH_VERSION);
+    static std::string media_version = std::to_string(RMX_VERSION_MAJOR) + std::string(".") +
+                                       std::to_string(RMX_VERSION_MINOR)+ std::string(".") +
+                                       std::to_string(RMX_VERSION_PATCH);
 
     std::cout<<"#############################################\n";
-    std::cout<<"## Rivermax SDK version:        " << rmax_version << std::endl;
+    std::cout<<"## Rivermax library version:    " << rmax_version << std::endl;
     std::cout<<"## Rivermax player version:     " << media_version << std::endl;
     std::cout<<"#############################################\n";
-
-    if (status != RMAX_OK) {
-        std::cerr << "Failed starting Rivermax " << status << std::endl;
-        rmax_cleanup();
-        exit(-1);
-    }
 
 #if defined(__linux__) && (LIBAVFORMAT_VERSION_MAJOR <= 59) && (LIBAVFORMAT_VERSION_MINOR < 27)
     // this is actually depends if function is deprecated, in some linux's it already is
@@ -2798,16 +2920,16 @@ int main(int argc, char *argv[])
 
         if (!parse_video_sdp_params(sdp, media_data)) {
             std::cerr<< "Can't parse video sdp info" << std::endl;
-            rmax_cleanup();
-            exit(-1);
+            cleanup();
+            exit(EXIT_FAILURE);
         }
 
         if (media_data.height != video_rmax_data.height ||
             media_data.width != video_rmax_data.width ||
             ((uint32_t)(media_data.fps * 1000) != (uint32_t)(video_rmax_data.fps * 1000)) ) {
             std::cerr<< "Provided mp4 file isn't compatible with SDP parameters:" << std::endl;
-            rmax_cleanup();
-            exit(-1);
+            cleanup();
+            exit(EXIT_FAILURE);
         }
         video_rmax_data.fps = media_data.fps;
         video_rmax_data.sample_rate = media_data.sample_rate;
@@ -2816,8 +2938,8 @@ int main(int argc, char *argv[])
         int video_stream_idx = video_reader_data.stream_index;
         if (video_stream_idx == -1) {
             std::cerr << "Fail finding video stream";
-            rmax_cleanup();
-            exit(-1);
+            cleanup();
+            exit(EXIT_FAILURE);
         }
 
         double frame_field_start_time_ns = (double)get_tai_time_ns() + (double)nanoseconds{seconds{5}}.count();
@@ -2898,13 +3020,13 @@ int main(int argc, char *argv[])
             //Audio
             if (!parse_audio_sdp_params(sdp, media_data)) {
                 std::cout << "No audio stream was found in SDP!" << std::endl;
-                ret = -1;
+                ret = EXIT_FAILURE;
                 goto exit;
             }
 
             if (!audio_process_file(video_files[i].c_str(), audio_rmax_data, audio_reader_data, media_data)) {
                 std::cout << "No audio stream was found in file" << std::endl;
-                ret = -1;
+                ret = EXIT_FAILURE;
                 goto exit;
             }
 
@@ -2944,7 +3066,7 @@ int main(int argc, char *argv[])
                     audio_rmax_data.channels << " in SDP file " <<
                     media_data.channels_num << "\nplease provide matching "
                         "SDP file<->audio file";
-                ret = -1;
+                ret = EXIT_FAILURE;
                 goto exit;
             }
             audio_rmax_data.dscp = DSCP_MEDIA_RTP_CLASS;
@@ -2977,7 +3099,7 @@ int main(int argc, char *argv[])
         if (eMediaType_t::ancillary & stream_type) {
             if (!parse_anc_sdp_params(sdp, media_data)) {
                 std::cout << "No ancillary stream was found in SDP!" << std::endl;
-                ret = -1;
+                ret = EXIT_FAILURE;
                 goto exit;
             }
 
@@ -3036,6 +3158,6 @@ exit:
     cond_vars.clear();
     av_format_ctx_vec.clear();
 
-    rmax_cleanup();
+    cleanup();
     return ret;
 }
