@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -27,6 +27,10 @@
 #include <chrono>
 #include <csignal>
 #include <atomic>
+#include <map>
+#include <utility>
+#include <functional>
+#include "rational.h"
 #define CPU_NONE (-1)
 #define MAX_CPU_RANGE 1024
 
@@ -59,6 +63,42 @@ enum FONT_COLOR {
     COLOR_RESET,
 };
 
+const std::map<std::string, std::pair<std::string, Rational>> supported_fps_map = {
+    {
+        std::string("23.976"),
+        {std::string("24000/1001"), Rational(24000, 1001)}
+    },
+    {
+        std::string("24"),
+        {std::string("24"), Rational(24)}
+    },
+    {
+        std::string("25"), 
+        {std::string("25"), Rational(25)}
+    },
+    {
+        std::string("29.97"),
+        {std::string("30000/1001"), Rational(30000, 1001)}
+    },
+    {
+        std::string("30"),
+        {std::string("30"), Rational(30)}
+    },
+    {
+        std::string("50"),
+        {std::string("50"), Rational(50)}
+    },
+    {
+        std::string("59.94"),
+        {std::string("60000/1001"), Rational(60000, 1001)}
+    },
+    {
+        std::string("60"),
+        {std::string("60"), Rational(60)}
+    },
+};
+
+void register_signal_handler_cb(const std::function<void()>& callback);
 /**
  * @brief: Returns the exit status of the application.
  *
@@ -68,7 +108,7 @@ enum FONT_COLOR {
  * long period runs.
  */
 std::atomic_bool& exit_app();
-static std::atomic_bool g_s_signal_received(false);
+extern std::atomic_bool g_s_signal_received;
 /**
 * @brief: Initializes signals caught by the application.
 */
@@ -83,17 +123,13 @@ void initialize_signals();
 */
 void signal_handler(const int signal_num);
 
-#ifdef __linux__
-int register_handler(int signum, void (*sig_handler)(int signum));
-#else
-int register_handler(PHANDLER_ROUTINE sig_handler);
-#endif
 void *color_set(enum FONT_COLOR color);
 void color_reset(void *ctx);
 bool cpu_affinity_get(std::stringstream &s, long &ret);
 bool rivermax_validate_thread_affinity_cpus(int internal_thread_affinity, std::vector<int> &cpus);
 bool rt_set_thread_affinity(struct rmax_cpu_set_t *cpu_mask);
-void set_cpu_affinity(const std::vector<int>& cpu_core_affinities);
+void rt_set_thread_affinity(const std::vector<int>& cpu_core_affinities);
+bool rt_set_rivermax_thread_affinity(int cpu_core);
 int rt_set_realtime_class(void);
 int rt_set_thread_priority(int prio);
 uint16_t get_cache_line_size(void);
@@ -107,22 +143,22 @@ public:
     EventMgr(EventMgr&) =delete;
     EventMgr& operator=(const EventMgr&) =delete;
 
-    bool init(rmax_stream_id stream_id);
-    bool request_notification(rmax_stream_id stream_id);
-    int wait_for_notification(rmax_stream_id stream_id);
+    bool init(rmx_stream_id stream_id);
+    bool request_notification(rmx_stream_id stream_id);
+    int wait_for_notification(rmx_stream_id stream_id);
 
 private:
-    int init_event_manager(rmax_event_channel_t event_channel);
+    int init_event_manager(rmx_event_channel_handle event_channel_handle);
     void on_completion() { m_request_completed = true; }
-    int bind_event_channel(rmax_event_channel_t event_channel);
-    rmax_stream_id m_stream_id;
+    int bind_event_channel(rmx_event_channel_handle event_channel_handle);
+    rmx_stream_id m_stream_id;
 #ifdef __linux__
     int m_epoll_fd;
 #else
     OVERLAPPED m_overlapped;
     static HANDLE m_iocp;
 #endif
-    rmax_event_channel_t m_event_channel;
+    rmx_event_channel_handle m_event_channel_handle;
     bool m_request_completed;
 };
 
@@ -276,24 +312,18 @@ bool parse_video_frame_rate_numeric(const std::string &frame_rate_string, T &fra
 {
     if (frame_rate_string.find(".") == std::string::npos) {
         frame_rate = stoi(frame_rate_string);
-        return true;
+    } else {
+        auto idx = frame_rate_string.find_last_of("0123456789");
+        if (idx != std::string::npos)
+            ++idx;
+        std::string frame_rate_string_trim(frame_rate_string, 0, idx);
+        auto fps = supported_fps_map.find(frame_rate_string_trim);
+        if (fps == supported_fps_map.end()) {
+            std::cerr << "invalid framerate " << frame_rate_string << std::endl;
+            return false;
+        }
+        frame_rate = rational_cast<T>(fps->second.second);
     }
-
-    std::vector<std::string> int_frac = split_string(frame_rate_string, '.');
-    if (int_frac.size() != 2) {
-        std::cerr << "invalid framerate " << frame_rate_string << std::endl;
-        return false;
-    }
-    auto idx = int_frac[1].find_last_of("0123456789");
-    if (idx != std::string::npos)
-        ++idx;
-    std::string tail(int_frac[1], 0, idx);
-    frame_rate = stoi(int_frac[0] + tail);
-    T denom = 1;
-    for (size_t i = tail.length(); i > 0; --i)
-        denom *= 10;
-    frame_rate /= denom;
-
     return true;
 }
 
@@ -602,6 +632,12 @@ uint32_t convert_ip_str_to_int(const std::string& ipv4str);
 bool assert_mc_ip(std::string ipv4str, std::string start_ipv4str, std::string end_ipv4str);
 
 std::string get_local_time(uint64_t time_ns);
+
+int set_enviroment_variable(const std::string &name, const std::string &value);
+
+rmx_status rivermax_setparam(const std::string &name, const std::string &value, bool final);
+
+bool rivermax_setparams(const std::vector<std::string> &assignments);
 
 #endif // _RT_THREADS_H_
 

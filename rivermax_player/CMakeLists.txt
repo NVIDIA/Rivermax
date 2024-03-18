@@ -44,6 +44,7 @@ target_sources(rivermax_player
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/rivermax_player.cpp
         ${UTILS_SOURCE_DIR}/rt_threads.cpp
+        ${UTILS_SOURCE_DIR}/rational.cpp
 )
 
 include(FetchFFmpeg)

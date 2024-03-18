@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -23,22 +23,12 @@
 #include <nvml.h>
 #endif
 #include "defs.h"
+#include "rt_threads.h"
 #include "gpu.h"
 
 extern "C"
 void cuda_compare_checksum(unsigned int expected, unsigned char* data,
     unsigned int size, unsigned int* mismatches);
-
-// TODO: Should be replaced separated function in utils
-// There is a problem because gpu.cpp file include both in tests/apps and rmax_app lib
-int set_enviroment_variable(const std::string &name, const std::string &value)
-{
-#if defined(_WIN32) || defined(_WIN64)
-    return _putenv_s(name.c_str(), value.c_str());
-#else
-    return setenv(name.c_str(), value.c_str(), 1);
-#endif
-}
 
 /**
  * @brief: Initialize GPU.

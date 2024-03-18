@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,12 +21,20 @@
 #ifdef __linux__
 #include <sys/mman.h>
 #include <stdlib.h>
-#define HUGE_PAGE_SZ (2*1024*1024)
+#include <unistd.h>
 #elif _WIN32
 #include <windows.h>
+#pragma comment(lib, "mincore")
 #endif
 #include "memory_allocator.h"
 #include "gpu.h"
+
+static constexpr int HUGE_PAGE_SIZE_VALUE_AUTO = 0;
+static constexpr int HUGE_PAGE_SIZE_VALUE_2MB = 21;
+static constexpr int HUGE_PAGE_SIZE_VALUE_512MB = 29;
+static constexpr int HUGE_PAGE_SIZE_VALUE_1GB = 30;
+static constexpr size_t HUGE_PAGE_SIZE_THRESHOLD = 2 * 1024 * 1024; // 2 MB
+static constexpr int PAGE_SIZE_64KB = 65536;
 
 void* MemoryAllocatorImp::allocate_new(const size_t length, size_t alignment)
 {
@@ -91,6 +99,31 @@ std::shared_ptr<MemoryUtils> MemoryAllocatorImp::get_memory_utils_gpu(int gpu_id
     return utils_gpu;
 }
 
+int MemoryAllocatorImp::get_huge_page_size_log2() const
+{
+    int size_log2 = HUGE_PAGE_SIZE_VALUE_AUTO;
+    const char *value = getenv("RIVERMAX_HUGE_PAGE_SIZE_LOG2");
+    if (value) {
+        if (strcmp(value, "auto") == 0) {
+            size_log2 = HUGE_PAGE_SIZE_VALUE_AUTO;
+        } else {
+            size_log2 = std::max(0, atoi(value));
+        }
+    }
+
+    switch (size_log2) {
+    case HUGE_PAGE_SIZE_VALUE_AUTO:
+        return get_default_huge_page_size_log2();
+    default:
+        return size_log2;
+    }
+}
+
+size_t MemoryAllocatorImp::get_huge_page_size() const
+{
+    return size_t(1) << get_huge_page_size_log2();
+}
+
 #ifdef __linux__
 void* LinuxMemoryAllocatorImp::allocate_malloc(const size_t length, size_t alignment)
 {
@@ -118,16 +151,17 @@ bool LinuxMemoryAllocatorImp::free_malloc(void* mem_ptr)
 
 bool LinuxMemoryAllocatorImp::init_huge_pages(size_t& huge_page_size)
 {
-    huge_page_size = HUGE_PAGE_SZ;
+    m_huge_page_size_log2 = get_huge_page_size_log2();
+    huge_page_size = get_huge_page_size();
     return true;
 }
 
 void* LinuxMemoryAllocatorImp::allocate_huge_pages(size_t length, size_t alignment)
 {
     NOT_IN_USE(alignment);
-    void* mem_ptr = mmap(nullptr, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | MAP_HUGETLB, -1, 0);
+    void* mem_ptr = mmap(nullptr, length, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_POPULATE | MAP_HUGETLB | (m_huge_page_size_log2 << MAP_HUGE_SHIFT), -1, 0);
     if (mem_ptr == MAP_FAILED) {
-        std::cerr << "Failed to allocate " << length << " bytes using huge pages with errno: " << errno << std::endl;
+        std::cerr << "Failed to allocate " << length << " bytes using huge pages with errno " << errno << " (" << strerror(errno) << ")" << ", page size log2 = " << m_huge_page_size_log2 << std::endl;
         return nullptr;
     }
     return mem_ptr;
@@ -146,7 +180,22 @@ bool LinuxMemoryAllocatorImp::free_huge_pages(void* mem_ptr, size_t length)
     return true;
 }
 
+int LinuxMemoryAllocatorImp::get_default_huge_page_size_log2() const
+{
+    switch (sysconf(_SC_PAGESIZE)) {
+    case PAGE_SIZE_64KB:
+        return HUGE_PAGE_SIZE_VALUE_512MB;
+    default:
+        return HUGE_PAGE_SIZE_VALUE_2MB;
+    }
+}
+
 #elif _WIN32
+WindowsMemoryAllocatorImp::WindowsMemoryAllocatorImp() :
+    m_huge_page_extended_flag(MemExtendedParameterInvalidType)
+{
+}
+
 void* WindowsMemoryAllocatorImp::allocate_malloc(const size_t length, size_t alignment)
 {
     void* mem_ptr = _aligned_malloc(length, alignment);
@@ -184,26 +233,49 @@ bool WindowsMemoryAllocatorImp::init_huge_pages(size_t& huge_page_size)
     LUID luid;
     if (!LookupPrivilegeValue(NULL, TEXT("SeLockMemoryPrivilege"), &luid)) {
         std::cout << "Cannot use Large Pages, could not lookup privileges: SeLockMemoryPrivilege" << std::endl;
-        std::cout << "Following steps should be done due to enable Large Pages:\n"
-            << "1. From the Start menu, open Local Security Policy (under Administrative Tools)\n"
-            << "2. Under Local Policies\\User Rights Assignment, double click the Lock Pages in Memory setting\n"
-            << "3. Click Add User or Group and type your Windows user name\n"
-            << "4. Either log off and then log back in or restart your computer" << std::endl;
+        CloseHandle(hToken);
         return false;
     }
     tp.PrivilegeCount = 1;
     tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED;
     tp.Privileges[0].Luid = luid;
-    if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL)) {
-        std::cout << "Cannot use Large Pages, failed setting privileges" << std::endl;
+    AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES), NULL, NULL);
+    DWORD last_error = GetLastError();
+    if (last_error != ERROR_SUCCESS) {
+        std::cout << "Cannot use Large Pages, failed setting privileges: error 0x" << std::hex << last_error << std::dec << std::endl;
+        std::cout << "Following steps should be done due to enable Large Pages:\n"
+            << "1. From the Start menu, open Local Security Policy (under Administrative Tools)\n"
+            << "2. Under Local Policies\\User Rights Assignment, double click the Lock Pages in Memory setting\n"
+            << "3. Click Add User or Group and type your Windows user name\n"
+            << "4. Either log off and then log back in or restart your computer" << std::endl;
+        CloseHandle(hToken);
         return false;
     }
     CloseHandle(hToken);
 
     huge_page_size = GetLargePageMinimum();
     if (huge_page_size == 0) {
-        std::cout << "GetLargePageMinimum() error got zero 0x" << std::hex << GetLastError() << std::endl;
+        std::cout << "GetLargePageMinimum() error got zero 0x" << std::hex << GetLastError() << std::dec << std::endl;
         return false;
+    } else {
+        auto size_log2 = get_huge_page_size_log2();
+        switch (size_log2) {
+        case HUGE_PAGE_SIZE_VALUE_AUTO:
+            m_huge_page_extended_flag = MemExtendedParameterInvalidType;
+            break;
+        case HUGE_PAGE_SIZE_VALUE_2MB:
+            m_huge_page_extended_flag = MEM_EXTENDED_PARAMETER_NONPAGED_LARGE;
+            huge_page_size = size_t(1) << size_log2;
+            break;
+        case HUGE_PAGE_SIZE_VALUE_1GB:
+            m_huge_page_extended_flag = MEM_EXTENDED_PARAMETER_NONPAGED_HUGE;
+            huge_page_size = size_t(1) << size_log2;
+            break;
+        default:
+            std::cerr << "Unsupported huge page size log2 value " << size_log2 << ". Using system default " << huge_page_size << std::endl;
+            m_huge_page_extended_flag = MemExtendedParameterInvalidType;
+            break;
+        }
     }
     return true;
 }
@@ -211,13 +283,28 @@ bool WindowsMemoryAllocatorImp::init_huge_pages(size_t& huge_page_size)
 void* WindowsMemoryAllocatorImp::allocate_huge_pages(size_t length, size_t alignment)
 {
     NOT_IN_USE(alignment);
-    void* mem_ptr = VirtualAlloc(NULL, length, MEM_LARGE_PAGES | MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    ULONG num_ext_params = 0;
+    MEM_EXTENDED_PARAMETER ext_param;
+    MEM_EXTENDED_PARAMETER* ext_param_ptr = nullptr;
+    if (m_huge_page_extended_flag != MemExtendedParameterInvalidType) {
+        num_ext_params = 1;
+        ext_param_ptr = &ext_param;
+        std::memset(&ext_param, 0, sizeof(ext_param));
+        ext_param.Type = MemExtendedParameterAttributeFlags;
+        ext_param.ULong64 = m_huge_page_extended_flag;
+    }
+    void* mem_ptr = VirtualAlloc2(NULL, NULL, length, MEM_LARGE_PAGES | MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE, ext_param_ptr, num_ext_params);
     if (!mem_ptr) {
-        std::cerr << "Failed to allocate " << length << " bytes using Large Pages" << std::endl;
+        auto last_error = GetLastError();
+        std::cerr << "Failed to allocate " << length << " bytes using Large Pages with error: 0x" << std::hex << last_error << std::dec << std::endl;
+        if (last_error == ERROR_INVALID_PARAMETER) {
+            std::cerr << "Non default large page size is probably not supported" << std::endl;
+            std::cerr << "Try setting environment variable RIVERMAX_HUGE_PAGE_SIZE_LOG2 to \"auto\"" << std::endl;
+        }
         return nullptr;
     }
 
-    std::cout << "Allocted " << length << " bytes using Large Pages" << std::endl;
+    std::cout << "Allocated " << length << " bytes using Large Pages" << std::endl;
     return mem_ptr;
 }
 
@@ -232,6 +319,11 @@ bool WindowsMemoryAllocatorImp::free_huge_pages(void* mem_ptr, size_t length)
     VirtualFree(mem_ptr, 0, MEM_RELEASE);
     mem_ptr = nullptr;
     return true;
+}
+
+int WindowsMemoryAllocatorImp::get_default_huge_page_size_log2() const
+{
+    return HUGE_PAGE_SIZE_VALUE_AUTO;
 }
 #endif
 
@@ -374,6 +466,8 @@ HugePagesMemoryAllocator::HugePagesMemoryAllocator()
 {
     if (!m_imp->init_huge_pages(m_huge_page_size)) {
         std::cerr << "Failed to initialize Huge Pages" << std::endl;
+    } else {
+        std::cout << "Initialized Huge Page allocator, page size = " << m_huge_page_size << std::endl;
     }
 }
 
@@ -426,7 +520,7 @@ std::shared_ptr<MemoryUtils> HugePagesMemoryAllocator::get_memory_utils()
 
 size_t HugePagesMemoryAllocator::align_length(size_t length, size_t alignment)
 {
-    if (length < alignment) {
+    if (length < HUGE_PAGE_SIZE_THRESHOLD) {
         std::cout << "Note: Allocation using huge pages size requested " << length
             << " is smaller then one page size: " << alignment << std::endl;
     }

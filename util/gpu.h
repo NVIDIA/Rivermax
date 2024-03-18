@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -76,18 +76,24 @@ bool cudaFreeMmap(uint64_t* ptr, size_t size);
 #else // TEGRA_ENABLED
 static inline bool gpu_set_locked_clocks_max_freq(int gpu_id)
 {
+    NOT_IN_USE(gpu_id);
     return true;
 }
 static inline bool gpu_reset_locked_clocks(int gpu_id)
 {
+    NOT_IN_USE(gpu_id);
     return true;
 }
 static inline bool gpu_query_bar1_memory_info(int gpu_id, gpu_bar1_memory_info& mem_info)
 {
+    NOT_IN_USE(gpu_id);
+    NOT_IN_USE(mem_info);
     return true;
 }
 static inline bool gpu_verify_allocated_bar1_size(int gpu_id, size_t size)
 {
+    NOT_IN_USE(gpu_id);
+    NOT_IN_USE(size);
     return true;
 }
 #endif

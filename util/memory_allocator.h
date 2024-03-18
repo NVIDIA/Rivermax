@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -45,7 +45,7 @@ typedef struct mem_block
  * that need new memory utilities to handle the new memory type.
  * Implementors of this interface, should add implementation of compatible method
  * in MemoryAllocatorImp class, this function will export the memory utilities
- * relavent to the specific memory Alocator.
+ * relevant to the specific memory Allocator.
  */
 class MemoryUtils
 {
@@ -285,6 +285,29 @@ public:
      * @return: Shared pointer to the memory utils.
      */
      virtual std::shared_ptr<MemoryUtils> get_memory_utils_gpu(int gpu_id);
+protected:
+    /**
+     * @brief: Returns the default value for the huge page size suitable for
+     * the current OS kernel.
+     *
+     * @return: Huge page size (log2), always positive.
+     */
+    virtual int get_default_huge_page_size_log2() const = 0;
+    /**
+     * @brief: Read huge page size parameter from environment variable.
+     *
+     * @description Supported values are 0 or "auto" for page size
+     * auto-selection or a positive number specifying a log2 of huge page size.
+     *
+     * @return: Huge page size (log2), always positive.
+     */
+    int get_huge_page_size_log2() const;
+    /**
+     * @brief: Return huge page size in bytes.
+     *
+     * @return: Page size in bytes.
+     */
+    size_t get_huge_page_size() const;
 };
 
 /**
@@ -294,12 +317,15 @@ public:
  */
 class LinuxMemoryAllocatorImp : public MemoryAllocatorImp
 {
+private:
+    int m_huge_page_size_log2 = 0;
 public:
     virtual void* allocate_malloc(const size_t length, size_t alignment) override;
     virtual bool free_malloc(void* mem_ptr) override;
     virtual bool init_huge_pages(size_t& huge_page_size) override;
     virtual void* allocate_huge_pages(size_t length, size_t alignment) override;
     virtual bool free_huge_pages(void* mem_ptr, size_t length) override;
+    virtual int get_default_huge_page_size_log2() const override;
 };
 
 /**
@@ -309,12 +335,16 @@ public:
  */
 class WindowsMemoryAllocatorImp : public MemoryAllocatorImp
 {
+private:
+    uint64_t m_huge_page_extended_flag;
 public:
+    WindowsMemoryAllocatorImp();
     virtual void* allocate_malloc(const size_t length, size_t alignment) override;
     virtual bool free_malloc(void* mem_ptr) override;
     virtual bool init_huge_pages(size_t& huge_page_size) override;
     virtual void* allocate_huge_pages(size_t length, size_t alignment) override;
     virtual bool free_huge_pages(void* mem_ptr, size_t length) override;
+    virtual int get_default_huge_page_size_log2() const override;
 };
 
 /**

@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +22,7 @@
 #include <string>
 #include <cstring>
 #include <chrono>
+#include <functional>
 #ifdef __linux__
 #include <sys/epoll.h>
 #include <unistd.h>
@@ -32,7 +33,8 @@
 #include <tchar.h>
 #include <ws2tcpip.h>
 #endif
-#include "rivermax_api.h"
+#include <rivermax_api.h>
+#include <rivermax_affinity.h>
 #include "rt_threads.h"
 
 using namespace std;
@@ -109,9 +111,18 @@ bool rivermax_validate_thread_affinity_cpus(int internal_thread_affinity, std::v
     return true;
 }
 
+std::atomic_bool g_s_signal_received {false};
+
 std::atomic_bool& exit_app()
 {
     return g_s_signal_received;
+}
+
+static std::vector<std::function<void()>> g_signal_handler_cbs;
+
+void register_signal_handler_cb(const std::function<void()>& callback)
+{
+    g_signal_handler_cbs.push_back(callback);
 }
 
 void initialize_signals()
@@ -122,38 +133,16 @@ void initialize_signals()
 void signal_handler(const int signal_num)
 {
     std::cout << "\n\n<--- Interrupt signal (" << signal_num << ") received --->\n\n\n";
+
+    for (auto& callback : g_signal_handler_cbs) {
+        callback();
+    }
     g_s_signal_received = true;
 }
 
 #if defined(_WIN32) || defined(_WIN64)
 
 HANDLE EventMgr::m_iocp = INVALID_HANDLE_VALUE;
-
-bool rt_set_thread_affinity(struct rmax_cpu_set_t *cpu_mask)
-{
-    DWORD_PTR ret;
-
-    for (int iter = 1; iter < RMAX_CPU_SETSIZE / RMAX_NCPUBITS; iter++) {
-        if (cpu_mask->rmax_bits[iter]) {
-            cerr << "Rivermax doesn't support setting thread affinity to CPUs beyond the first 64" << endl;
-        }
-    }
-
-    DWORD_PTR thread_affinity = static_cast<DWORD_PTR>(cpu_mask->rmax_bits[0]);
-    if (!thread_affinity)
-        return true;
-
-    HANDLE thread_handle = GetCurrentThread();
-    ret = SetThreadAffinityMask(thread_handle, thread_affinity);
-    if (!ret) {
-        cerr << "Failed setting CPU affinity, Error " << GetLastError() << endl;
-        return false;
-    } else {
-        cout << "Successfully set thread affinity using cpu mask: 0x" << hex << thread_affinity << ", previous mask: 0x" << hex << ret << dec << endl;
-    }
-
-    return true;
-}
 
 int rt_set_thread_priority(int prio)
 {
@@ -303,50 +292,6 @@ void color_reset(void *ctx)
     std::cout << color_map[COLOR_RESET];
 }
 
-bool rt_set_thread_affinity(struct rmax_cpu_set_t *cpu_mask)
-{
-    /* set thread affinity */
-    int ret = 0;
-    cpu_set_t *cpu_set;
-    rmax_cpu_mask_t major;
-    size_t cpu_alloc_size;
-
-    cpu_set = CPU_ALLOC(RMAX_CPU_SETSIZE);
-    if (!cpu_set) {
-        cerr << "failed to allocate cpu_set for " << RMAX_CPU_SETSIZE << " CPUs" << endl;
-        return false;
-    }
-    cpu_alloc_size = CPU_ALLOC_SIZE(RMAX_CPU_SETSIZE);
-    CPU_ZERO_S(cpu_alloc_size, cpu_set);
-
-    /* Run through all rmax_cpu_mask_t blocks and add any set bit to cpu_set */
-    for (major = 0; major < RMAX_CPU_SETSIZE / RMAX_NCPUBITS; major++) {
-        rmax_cpu_mask_t current;
-        rmax_cpu_mask_t minor;
-
-        for (current = cpu_mask->rmax_bits[major], minor = 0; current; current >>= 1, minor++) {
-            if (current & 0x1) {
-                CPU_SET(major * RMAX_NCPUBITS + minor, cpu_set);
-            }
-        }
-    }
-
-    pthread_t thread_handle = pthread_self();
-
-    if (CPU_COUNT(cpu_set)) {
-        ret = pthread_setaffinity_np(thread_handle, cpu_alloc_size, cpu_set);
-        if (ret) {
-            cerr << "failed setting thread affinity, errno: " << errno << endl;
-        } else {
-            cout << "successfully set thread affinity using cpu set: 0x" << hex << cpu_set->__bits[0] << dec << endl;
-        }
-    }
-
-    CPU_FREE(cpu_set);
-
-    return ret ? false: true;
-}
-
 int rt_set_thread_priority(int prio)
 {
     (void)(prio);
@@ -384,7 +329,7 @@ EventMgr::EventMgr()
 }
 
 #ifdef __linux__
-int EventMgr::init_event_manager(rmax_event_channel_t event_channel)
+int EventMgr::init_event_manager(rmx_event_channel_handle event_channel_handle)
 {
     if (-1 == m_epoll_fd) {
         int epoll_fd = epoll_create1(0);
@@ -394,85 +339,88 @@ int EventMgr::init_event_manager(rmax_event_channel_t event_channel)
             exit(-1);
         }
         m_epoll_fd = epoll_fd;
-        m_event_channel = event_channel;
+        m_event_channel_handle = event_channel_handle;
         return 0;
     }
     return -1;
 }
 
-int EventMgr::bind_event_channel(rmax_event_channel_t event_channel)
+int EventMgr::bind_event_channel(rmx_event_channel_handle event_channel_handle)
 {
     if (INVALID_HANDLE_VALUE != m_epoll_fd) {
         struct epoll_event ev;
         memset(&ev, 0, sizeof(ev));
         ev.events = EPOLLIN | EPOLLOUT;
-        ev.data.fd = event_channel;
-        if (epoll_ctl(m_epoll_fd, EPOLL_CTL_ADD, event_channel, &ev)) {
-            std::cout << "Failed to add fd " << event_channel << " to epoll, errno: "
+        ev.data.fd = event_channel_handle;
+        if (epoll_ctl(m_epoll_fd, EPOLL_CTL_ADD, event_channel_handle, &ev)) {
+            std::cout << "Failed to add fd " << event_channel_handle << " to epoll, errno: "
                 << errno << std::endl;
             close(m_epoll_fd);
             exit(-1);
         }
-        m_event_channel = event_channel;
+        m_event_channel_handle = event_channel_handle;
         return 0;
     }
     return -1;
 }
 #else
-int EventMgr::init_event_manager(rmax_event_channel_t event_channel)
+int EventMgr::init_event_manager(rmx_event_channel_handle event_channel_handle)
 {
     if (INVALID_HANDLE_VALUE == m_iocp) {
         // Create IOCP
         m_iocp = ::CreateIoCompletionPort(
-            event_channel,
+            event_channel_handle,
             nullptr /*create new IOCP*/,
             0 /*completion key is ignored*/,
             0 /*concurrency is ignored with existing ports*/);
         if (!m_iocp) {
-            std::cout << "Failed to create iocp with CreateIoCompletionPort for handle " << event_channel << ", err=" << GetLastError() << std::endl;
+            std::cout << "Failed to create iocp with CreateIoCompletionPort for handle " << event_channel_handle << ", err=" << GetLastError() << std::endl;
             return -1;
         }
-        m_event_channel = event_channel;
+        m_event_channel_handle = event_channel_handle;
         return 0;
     }
     return 0;
 }
 
-int EventMgr::bind_event_channel(rmax_event_channel_t event_channel)
+int EventMgr::bind_event_channel(rmx_event_channel_handle event_channel_handle)
 {
     if (INVALID_HANDLE_VALUE != m_iocp) {
         // Create IOCP
         m_iocp = ::CreateIoCompletionPort(
-            event_channel,
+            event_channel_handle,
             m_iocp /*create new IOCP*/,
             0 /*completion key is ignored*/,
             0 /*concurrency is ignored with existing ports*/);
         if (!m_iocp) {
-            std::cout << "Failed to bind event_channel " << event_channel << " to IOCP " << m_iocp <<
+            std::cout << "Failed to bind event_channel " << event_channel_handle << " to IOCP " << m_iocp <<
                 ", err=" << GetLastError() << std::endl;
             return -1;
         }
-        m_event_channel = event_channel;
+        m_event_channel_handle = event_channel_handle;
         return 0;
     }
-    std::cout << "Failed to bind event_channel " << event_channel << " to IOCP " << m_iocp <<
+    std::cout << "Failed to bind event_channel " << event_channel_handle << " to IOCP " << m_iocp <<
         ", err=" << GetLastError() << std::endl;
     return -1;
 }
 #endif
 
-bool EventMgr::init(rmax_stream_id stream_id)
+bool EventMgr::init(rmx_stream_id stream_id)
 {
-    rmax_status_t status;
-    rmax_event_channel_t event_channel;
+    rmx_status status;
+    rmx_event_channel_params event_channel;
+    rmx_event_channel_handle event_channel_handle;
+    rmx_init_event_channel(&event_channel, stream_id);
+    rmx_set_event_channel_handle(&event_channel, &event_channel_handle);
 
-    status = rmax_get_event_channel(stream_id, &event_channel);
-    if (status != RMAX_OK) {
+    status = rmx_establish_event_channel(&event_channel);
+    if (status != RMX_OK) {
         std::cout << "Failed getting event channel with rmax_get_event_channel, status:" << status << std::endl;
         return false;
     }
 
-    int ret = bind_event_channel(event_channel);
+    int ret = bind_event_channel(event_channel_handle);
     if (ret) {
         /* close event_channel */
 
@@ -482,13 +430,14 @@ bool EventMgr::init(rmax_stream_id stream_id)
     return true;
 }
 
-bool EventMgr::request_notification(rmax_stream_id stream_id)
+bool EventMgr::request_notification(rmx_stream_id stream_id)
 {
-    rmax_status_t ret;
+    rmx_status ret;
 
-#ifdef __linux__
-    ret = rmax_request_notification(stream_id);
-#else
+    rmx_notification_params notification;
+    rmx_init_notification(&notification, stream_id);
+#ifndef __linux__
+    rmx_set_notification_overlapped(&notification, &m_overlapped);
     m_stream_id = stream_id;
     if (m_request_completed) {
         // Some other stream has received the event and notified the current stream by setting the
@@ -498,19 +447,20 @@ bool EventMgr::request_notification(rmax_stream_id stream_id)
         m_request_completed = false;
         return false;
     }
-    ret = rmax_request_notification(stream_id, &m_overlapped);
 #endif
-    if (ret == RMAX_OK) {
+    ret = rmx_request_notification(&notification);
+
+    if (ret == RMX_OK) {
         wait_for_notification(stream_id);
-    } else if (ret != RMAX_ERR_BUSY && ret != RMAX_SIGNAL) {
+    } else if (ret != RMX_BUSY && ret != RMX_SIGNAL) {
         std::cerr << "Error returned by rmax_request_notification(): " << ret << std::endl;
-        rmax_cleanup();
+        rmx_cleanup();
         exit(-1);
     }
     return true;
 }
 
-int EventMgr::wait_for_notification(rmax_stream_id stream_id)
+int EventMgr::wait_for_notification(rmx_stream_id stream_id)
 {
 #ifdef __linux
     stream_id = stream_id;
@@ -584,10 +534,14 @@ int register_handler(PHANDLER_ROUTINE sig_handler)
 }
 #endif
 
-
-void set_cpu_affinity(const std::vector<int>& cpu_core_affinities)
+bool rt_set_thread_affinity(struct rmax_cpu_set_t *cpu_mask)
 {
-    rmax_cpu_set_t cpu_affinity_mask;
+    return (cpu_mask)? rivermax::libs::set_affinity(*cpu_mask): true;
+}
+
+void rt_set_thread_affinity(const std::vector<int>& cpu_core_affinities)
+{
+    rivermax::libs::Affinity::mask cpu_affinity_mask;
 
     memset(&cpu_affinity_mask, 0, sizeof(cpu_affinity_mask));
     for (auto cpu : cpu_core_affinities) {
@@ -595,7 +549,29 @@ void set_cpu_affinity(const std::vector<int>& cpu_core_affinities)
             RMAX_CPU_SET(cpu, &cpu_affinity_mask);
         }
     }
-    rt_set_thread_affinity(&cpu_affinity_mask);
+    rivermax::libs::set_affinity(cpu_affinity_mask);
+}
+
+bool rt_set_rivermax_thread_affinity(int cpu_core)
+{
+    if (cpu_core == CPU_NONE) {
+        return true;
+    }
+    if (cpu_core < 0) {
+        std::cerr << "Invalid CPU core number " << cpu_core << std::endl;
+        return false;
+    }
+
+    constexpr size_t cores_per_mask = 8 * sizeof(uint64_t);
+    std::vector<uint64_t> cpu_mask(cpu_core / cores_per_mask + 1, 0);
+    rmx_mark_cpu_for_affinity(cpu_mask.data(), cpu_core);
+    rmx_status status = rmx_set_cpu_affinity(cpu_mask.data(), size_t(cpu_core) + 1);
+    if (status != RMX_OK) {
+        std::cerr << "Failed to set Rivermax CPU affinity to core " << cpu_core << ": " << status << std::endl;
+        return false;
+    }
+
+    return true;
 }
 
 uint64_t default_time_handler(void*) /* XXX should be refactored and combined with media_sender's clock functions */
@@ -608,9 +584,10 @@ double time_to_rtp_timestamp(double time_ns, int sample_rate)
     double time_sec = time_ns / static_cast<double>(std::chrono::nanoseconds{ std::chrono::seconds{1} }.count());
     double timestamp = time_sec * static_cast<double>(sample_rate);
     double mask = 0x100000000;
-    // We decrease one tick from the timestamp to prevent cases where the timestamp
-    // lands up in the future due to calculation imprecision
-    timestamp = std::fmod(timestamp, mask) - 1;
+    // Decreasing RTP timestamp but not too much to have buffer both for delays
+    // and advances in transmission or calculation imprecision
+    timestamp -= 5;
+    timestamp = std::fmod(timestamp, mask);
     return timestamp;
 }
 
@@ -643,7 +620,10 @@ std::string get_local_time(uint64_t time_ns)
     struct tm time_buff;
 #ifdef __linux__
     localtime_r(&time_format, &time_buff);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wformat-y2k"
     strftime(time_str, sizeof(time_str) - 1, "%c", &time_buff);
+#pragma GCC diagnostic pop
 #else
     localtime_s(&time_buff, &time_format);
     strftime(time_str, sizeof(time_str) - 1, "%c", &time_buff);
@@ -651,3 +631,52 @@ std::string get_local_time(uint64_t time_ns)
     return std::string(time_str);
 }
 
+int set_enviroment_variable(const std::string &name, const std::string &value)
+{
+#if defined(_WIN32) || defined(_WIN64)
+    return _putenv_s(name.c_str(), value.c_str());
+#else
+    return setenv(name.c_str(), value.c_str(), 1);
+#endif
+}
+
+rmx_status rivermax_setparam(const std::string &name, const std::string &value, bool forced)
+{
+    rmx_lib_param param;
+    rmx_init_lib_param(&param);
+    rmx_set_lib_param_name(&param, name.c_str());
+    rmx_set_lib_param_value(&param, value.c_str());
+    if (forced) {
+        rmx_set_lib_param_forced(&param);
+    }
+    return rmx_apply_lib_param(&param);
+}
+
+bool rivermax_setparams(const std::vector<std::string> &assignments)
+{
+    for (auto &param_value_pair : assignments) {
+        size_t pos = param_value_pair.find('=');
+        if (pos == 0 || pos >= param_value_pair.length()) {
+            std::cerr << "Invalid Rivermax parameter assignment string (" << param_value_pair << ")" << std::endl;
+            return false;
+        }
+        std::string name = param_value_pair.substr(0, pos);
+        std::string value = param_value_pair.substr(pos + 1);
+
+        rmx_status status = rivermax_setparam(name, value, true);
+        switch (status) {
+            case RMX_OK:
+                continue;
+            case RMX_NOT_IMPLEMENTED:
+                std::cerr << "Invalid Rivermax parameter name: " << name << std::endl;
+                return false;
+            case RMX_INVALID_PARAM_2:
+                std::cerr << "Invalid Rivermax parameter value: " << value << std::endl;
+                return false;
+            default:
+                std::cerr << "Assigning Rivermax parameter failed" << std::endl;
+                return false;
+        }
+    }
+    return true;
+}
