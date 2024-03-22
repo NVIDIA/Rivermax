@@ -60,6 +60,7 @@ size_t gpu_align_physical_allocation_size(int gpu_id, size_t acllocation_size);
 uint32_t* gpu_allocate_counter();
 uint32_t gpu_read_counter(uint32_t *counter);
 void gpu_reset_counter(uint32_t *counter);
+size_t gpu_query_alignment(int gpu_id);
 void* gpu_allocate_memory(int gpu_id, size_t size, size_t align);
 bool gpu_free_memory(void* ptr, size_t size);
 bool gpu_memset(void* dst, int value, size_t count);
@@ -139,6 +140,12 @@ static inline uint32_t gpu_read_counter(uint32_t *counter)
 static inline void gpu_reset_counter(uint32_t *counter)
 {
     NOT_IN_USE(counter);
+}
+
+static inline size_t gpu_query_alignment(int gpu_id)
+{
+    NOT_IN_USE(gpu_id);
+    return 0;
 }
 
 static inline void* gpu_allocate_memory(int gpu, size_t size, size_t align)

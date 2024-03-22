@@ -155,7 +155,6 @@ void* gpu_allocate_memory(int gpu_id, size_t size, size_t align)
 #ifdef TEGRA_ENABLED
     cuda_err = cudaMallocHost((void**)&buffer, size);
 #else
-    //cuda_err = cudaMalloc((void**)&buffer, size);
     buffer = (char*)cudaAllocateMmap(gpu_id, size, align);
 #endif
     if (cuda_err != cudaSuccess || buffer == nullptr) {
@@ -204,31 +203,39 @@ bool gpu_free_memory(void* ptr, size_t size)
     return true;
 }
 
-size_t gpu_align_physical_allocation_size(int gpu_id, size_t acllocation_size)
+size_t gpu_query_alignment(int gpu_id)
 {
+#ifdef TEGRA_ENABLED
+    return 1;
+#else // TEGRA_ENABLED
     CUresult status = CUDA_SUCCESS;
-    size_t size = acllocation_size;
-#ifndef TEGRA_ENABLED
     size_t granularity = 0;
     CUmemAllocationProp prop = {};
     prop.type = CU_MEM_ALLOCATION_TYPE_PINNED;
     prop.location.type = CU_MEM_LOCATION_TYPE_DEVICE;
-    // get the minimum granularity for residentDevices[idx]
     prop.location.id = gpu_id;
     // Get the minimum granularity needed for the resident devices
     // (the max of the minimum granularity of each participating device)
     status = cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM);
     if (status != CUDA_SUCCESS) {
         std::cout << "cuMemGetAllocationGranularity failed status = " << status << "\n";
+        return 1;
     }
+    return granularity;
+#endif
+}
+
+size_t gpu_align_physical_allocation_size(int gpu_id, size_t allocation_size)
+{
+    size_t size = allocation_size;
+    size_t granularity = gpu_query_alignment(gpu_id);
     // Round up the size such that we can evenly split it into a stripe size that
     // meets the granularity requirements Essentially size = N *
     // residentDevices.size() * min_granularity is the requirement, since each
     // piece of the allocation will be stripeSize = N * min_granularity and the
     // min_granularity requirement applies to each stripeSize piece of the
     // allocation.
-    size = round_up(acllocation_size, granularity); /* This must always co-exist with the NIC size restrictions. Is it guaranteed to? */
-#endif
+    size = round_up(allocation_size, granularity); /* This must always co-exist with the NIC size restrictions. Is it guaranteed to? */
     return size;
 }
 

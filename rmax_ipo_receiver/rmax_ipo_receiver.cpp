@@ -73,6 +73,9 @@ void IPOReceiverApp::add_cli_options()
     m_cli_parser_manager->add_option(CLIOptStr::INTERNAL_CORE);
     m_cli_parser_manager->add_option(CLIOptStr::APPLICATION_CORE);
     m_cli_parser_manager->add_option(CLIOptStr::SLEEP_US);
+#ifdef CUDA_ENABLED
+    m_cli_parser_manager->add_option(CLIOptStr::GPU_ID);
+#endif
     m_cli_parser_manager->add_option(CLIOptStr::ALLOCATOR_TYPE);
     m_cli_parser_manager->add_option(CLIOptStr::VERBOSE);
 
@@ -153,14 +156,8 @@ ReturnStatus IPOReceiverApp::run()
 
 ReturnStatus IPOReceiverApp::initialize_rivermax_resources()
 {
-    std::vector<int> cpu_affinity;
-
-    if (m_app_settings->internal_thread_core != CPU_NONE) {
-        cpu_affinity.push_back(m_app_settings->internal_thread_core);
-    }
-
     rt_set_realtime_class();
-    return m_rmax_apps_lib.initialize_rivermax(cpu_affinity);
+    return m_rmax_apps_lib.initialize_rivermax(m_app_settings->internal_thread_core);
 }
 
 void IPOReceiverApp::configure_network_flows()
@@ -221,9 +218,14 @@ void IPOReceiverApp::initialize_receive_io_nodes()
     }
 }
 
-byte_t* IPOReceiverApp::allocate_and_align(size_t size)
+bool IPOReceiverApp::allocate_and_align(size_t header_size, size_t payload_size, byte_t*& header, byte_t*& payload)
 {
-    return static_cast<byte_t*>(m_mem_allocator->allocate_aligned(size, m_mem_allocator->get_page_size()));
+    header = payload = nullptr;
+    if (header_size) {
+        header = static_cast<byte_t*>(m_header_allocator->allocate_aligned(header_size, m_header_allocator->get_page_size()));
+    }
+    payload = static_cast<byte_t*>(m_payload_allocator->allocate_aligned(payload_size, m_payload_allocator->get_page_size()));
+    return payload && (header_size == 0 || header);
 }
 
 ReturnStatus IPOReceiverApp::allocate_app_memory()
@@ -235,32 +237,48 @@ ReturnStatus IPOReceiverApp::allocate_app_memory()
         return rc;
     }
 
-    m_header_buffer = allocate_and_align(hdr_mem_size + pld_mem_size);
-    m_payload_buffer = m_header_buffer + hdr_mem_size;
+    bool alloc_successful = allocate_and_align(hdr_mem_size, pld_mem_size, m_header_buffer, m_payload_buffer);
 
-    if (m_header_buffer) {
+    if (alloc_successful) {
         std::cout << "Allocated " << hdr_mem_size << " bytes for header"
             << " at address " << static_cast<void*>(m_header_buffer)
             << " and " <<  pld_mem_size << " bytes for payload"
             << " at address " << static_cast<void*>(m_payload_buffer) << std::endl;
     } else {
-        std::cerr << "Failed to allocate RAM" << std::endl;
+        std::cerr << "Failed to allocate memory" << std::endl;
         return ReturnStatus::failure;
     }
 
-    m_mem_regions.resize(m_num_paths_per_stream);
+    m_header_mem_regions.resize(m_num_paths_per_stream);
+    m_payload_mem_regions.resize(m_num_paths_per_stream);
 
-    if (m_register_memory) {
-        for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
+    if (!m_register_memory) {
+        return ReturnStatus::success;
+    }
+
+    for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
+        m_header_mem_regions[i].addr = m_header_buffer;
+        m_header_mem_regions[i].length = hdr_mem_size;
+        m_header_mem_regions[i].mkey = 0;
+        if (hdr_mem_size) {
             rmx_mem_reg_params mem_registry;
             rmx_init_mem_registry(&mem_registry, &m_device_ifaces[i]);
-            m_mem_regions[i].addr = m_header_buffer;
-            m_mem_regions[i].length = hdr_mem_size + pld_mem_size;
-            rmx_status status = rmx_register_memory(&m_mem_regions[i], &mem_registry);
+            rmx_status status = rmx_register_memory(&m_header_mem_regions[i], &mem_registry);
             if (status != RMX_OK) {
-                std::cerr << "Failed to register payload memory with status: " << status << std::endl;
+                std::cerr << "Failed to register header memory on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
                 return ReturnStatus::failure;
             }
+        }
+    }
+    for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
+        rmx_mem_reg_params mem_registry;
+        rmx_init_mem_registry(&mem_registry, &m_device_ifaces[i]);
+        m_payload_mem_regions[i].addr = m_payload_buffer;
+        m_payload_mem_regions[i].length = pld_mem_size;
+        rmx_status status = rmx_register_memory(&m_payload_mem_regions[i], &mem_registry);
+        if (status != RMX_OK) {
+            std::cerr << "Failed to register payload memory on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
+            return ReturnStatus::failure;
         }
     }
 
@@ -273,10 +291,18 @@ void IPOReceiverApp::unregister_app_memory()
         return;
     }
 
-    for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
-        rmx_status status = rmx_deregister_memory(&m_mem_regions[i], &m_device_ifaces[i]);
+    if (m_header_buffer) {
+        for (size_t i = 0; i < m_header_mem_regions.size(); ++i) {
+            rmx_status status = rmx_deregister_memory(&m_header_mem_regions[i], &m_device_ifaces[i]);
+            if (status != RMX_OK) {
+                std::cerr << "Failed to deregister header memory on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
+            }
+        }
+    }
+    for (size_t i = 0; i < m_payload_mem_regions.size(); ++i) {
+        rmx_status status = rmx_deregister_memory(&m_payload_mem_regions[i], &m_device_ifaces[i]);
         if (status != RMX_OK) {
-            std::cerr << "Failed to deregister RAM on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
+            std::cerr << "Failed to deregister payload memory on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
         }
     }
 }
@@ -294,8 +320,8 @@ ReturnStatus IPOReceiverApp::get_total_ipo_streams_memory_size(size_t& hdr_mem_s
                 std::cerr << "Failed to query buffer size for stream " << stream->get_id() << " of receiver " << receiver->get_index() << std::endl;
                 return rc;
             }
-            hdr_mem_size += m_mem_allocator->align_length(hdr_buf_size);
-            pld_mem_size += m_mem_allocator->align_length(pld_buf_size);
+            hdr_mem_size += m_header_allocator->align_length(hdr_buf_size);
+            pld_mem_size += m_payload_allocator->align_length(pld_buf_size);
         }
     }
 
@@ -316,12 +342,14 @@ void IPOReceiverApp::distribute_memory_for_receivers()
 
             stream->set_buffers(hdr_ptr, pld_ptr);
             if (m_register_memory) {
-                stream->set_memory_keys(m_mem_regions, m_mem_regions);
+                stream->set_memory_keys(m_header_mem_regions, m_payload_mem_regions);
             }
             stream->query_buffer_size(hdr, pld);
 
-            hdr_ptr += m_mem_allocator->align_length(hdr);
-            pld_ptr += m_mem_allocator->align_length(pld);
+            if (hdr_ptr) {
+                hdr_ptr += m_header_allocator->align_length(hdr);
+            }
+            pld_ptr += m_payload_allocator->align_length(pld);
         }
     }
 }

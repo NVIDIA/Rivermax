@@ -13,14 +13,14 @@ purpose are disclaimed.
 ### Details
 
 * Release date: 31-01-2023
-* Update date: 16-05-2023
-* Version: 1.30.16
+* Update date: 27-03-2024
+* Version: 1.50
 
 ### Tested on
 
-* Rivermax: 1.30.16
-* OFED: 23.04-0.5.3.3
-* WinOF2: 23.4.26054
+* Rivermax: 1.50
+* OFED: 24.04-0.3.8.0
+* WinOF2: 24.4
 * OS:
   * Ubuntu 20.04
   * Ubuntu 22.04
@@ -87,12 +87,16 @@ used only together with non-zero `-e` or `--app-hdr-size` parameter.
 The application supports memory allocator selection via command-line key `-A`
 or `--allocator-type`. The following types are available:
 * auto - Automatic selection (default).
-* gpu - Allocate GPU memory. Currently not supported by this application.
 * malloc - malloc memory allocation using system-default page size.
 * hugepage - Huge Page allocation using system-default huge page size.
 * hugepage-2m - Allocate 2 MB huge pages.
 * hugepage-512m - Allocate 512 MB huge pages.
 * hugepage-1g - Allocate 1024 MB huge pages.
+
+If the user selects GPU device by passing its index via `--gpu-id`, then
+payload buffer will be allocated in GPU memory. If the user also sets header
+size (`--app-hdr-size`) to non-zero value, then header buffer will be allocated
+in RAM using the allocator passed via `--allocator-type`.
 
 ### Example #1: _Receiving a single stream_
 
@@ -147,6 +151,20 @@ same application process. Streams:
 
 ```shell
 sudo ./rmax_ipo_receiver --local-ips 192.168.1.2,192.168.2.3 --src-ips 192.168.1.3,192.168.2.4 --dst-ips 239.4.4.4,239.4.4.5 -p 45678,56789 --streams 3
+```
+
+### Example #5: _Receiving a redundant stream using header/data split feature and GPUDirect_
+
+This example demonstrates receiving a redundant stream into both RAM (headers)
+and GPU memory (payload). The initial 40 bytes are stripped from the payload as
+an application header and placed in buffers allocated in RAM. The remaining
+1420 bytes are placed in dedicated payload buffers. In this case, the payload
+buffers are allocated in GPU 0 memory since `--gpu-id` flag is provided. The
+number of packets is set to 65536 because the default buffer size may be too
+big for BAR1 memory size.
+
+```shell
+sudo ./rmax_ipo_receiver --local-ips 192.168.1.2,192.168.2.3 --src-ips 192.168.1.3,192.168.2.4 --dst-ips 239.4.4.4,239.4.4.5 -p 45678,56789 --app-hdr-size 40 --payload-size 1420 --gpu-id 0 --packets 65536
 ```
 
 ## Known Issues / Limitations

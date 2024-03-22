@@ -73,8 +73,10 @@ private:
     std::vector<std::vector<FourTupleFlow>> m_flows;
     /* NIC device interfaces */
     std::vector<rmx_device_iface> m_device_ifaces;
-    /* Memory regions for memory allocated for each device interface */
-    std::vector<rmx_mem_region> m_mem_regions;
+    /* Memory regions for header memory allocated for each device interface */
+    std::vector<rmx_mem_region> m_header_mem_regions;
+    /* Memory regions for payload memory allocated for each device interface */
+    std::vector<rmx_mem_region> m_payload_mem_regions;
     // Maximum Path Differential for "Class B: Moderate-Skew" receivers defined
     // by SMPTE ST 2022-7:2019 "Seamless Protection Switching of RTP Datagrams".
     uint64_t m_max_path_differential_us = 50000;
@@ -171,11 +173,14 @@ private:
     /**
      * @brief: Allocates memory and aligns it to page size.
      *
-     * @param [in] size: Requested allocation size.
+     * @param [in]  header_size:  Requested header memory size.
+     * @param [in]  payload_size: Requested payload memory size.
+     * @param [out] header:       Allocated header memory pointer.
+     * @param [out] payload:      Allocated payload memory pointer.
      *
-     * @return: Pointer to allocated memory.
+     * @return: True if successful.
      */
-    byte_t* allocate_and_align(size_t size);
+    bool allocate_and_align(size_t header_size, size_t payload_size, byte_t*& header, byte_t*& payload);
 };
 
 } // namespace rmax_xstream_media_sender
