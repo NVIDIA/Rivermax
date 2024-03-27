@@ -37,7 +37,11 @@ if (NOT TARGET Utils::RtThread)
 
     add_library(UtilsRtThread)
     set_target_properties(UtilsRtThread PROPERTIES CXX_EXTENSIONS OFF)
-    target_sources(UtilsRtThread PRIVATE ${RT_THREAD_SOURCE_DIR}/rt_threads.cpp)
+    target_sources(UtilsRtThread 
+      PRIVATE 
+        ${RT_THREAD_SOURCE_DIR}/rt_threads.cpp
+        ${RT_THREAD_SOURCE_DIR}/rational.cpp
+    )
     target_include_directories(UtilsRtThread PUBLIC ${RT_THREAD_SOURCE_DIR})
     target_link_libraries(UtilsRtThread PRIVATE Threads::Threads Rivermax::Rivermax)
     add_library(Utils::RtThread ALIAS UtilsRtThread)

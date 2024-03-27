@@ -22,6 +22,7 @@ project(RivermaxPlayer)
 # Include common logic
 #
 include(ProjectCommon)
+include(RtThread)
 
 #------------------------------------------------------------------------------
 # Configure the executable
@@ -43,11 +44,9 @@ target_include_directories(rivermax_player PRIVATE
 target_sources(rivermax_player
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/rivermax_player.cpp
-        ${UTILS_SOURCE_DIR}/rt_threads.cpp
-        ${UTILS_SOURCE_DIR}/rational.cpp
 )
 
 include(FetchFFmpeg)
 find_package(Rivermax 1.41.11 REQUIRED)
 find_package(FFmpeg REQUIRED)
-target_link_libraries(rivermax_player PRIVATE apps_common_base Rivermax::Rivermax FFmpeg::FFmpeg)
+target_link_libraries(rivermax_player PRIVATE apps_common_base Rivermax::Rivermax Utils::RtThread FFmpeg::FFmpeg)

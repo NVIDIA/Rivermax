@@ -93,6 +93,7 @@ target_compile_options(app_compilation_flags INTERFACE
 # CUDA integration
 
 if (CMAKE_CUDA_COMPILER)
+    include(RtThread)
     add_library(app_cuda_integration)
     target_sources(app_cuda_integration
         PRIVATE
@@ -102,11 +103,13 @@ if (CMAKE_CUDA_COMPILER)
     target_include_directories(app_cuda_integration
         PUBLIC
             ${PROJECT_SOURCE_DIR}/cuda
+            ${Rivermax_INCLUDE_DIR}
     )
     target_compile_options(app_cuda_integration PUBLIC -DCUDA_ENABLED)
     target_link_libraries(app_cuda_integration 
         PRIVATE 
             app_compilation_flags
+            Utils::RtThread
         PUBLIC
             CUDA::cuda_driver
     )
