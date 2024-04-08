@@ -10,12 +10,12 @@ but not limited to, the implied warranties of merchantability and fitness for a 
 purpose are disclaimed.
 
 * Release date: 27-Oct-2022
-* Update date: 28-Apr-2023
-* Version: 1.1
+* Update date: 08-Apr-2024
+* Version: 1.2
 * Compatibility:
   * Rivermax: 1.30.16
   * OFED: 23.04-0.5.3.3
-  * DOCA: 2.5.0
+  * DOCA: 2.7.0036
   * OS: Ubuntu 20.04
   * Hardware: BlueField 2
 
@@ -27,11 +27,10 @@ purpose are disclaimed.
 
 ## Prerequisites
 
-* [NVIDIA DOCA SDK](https://developer.nvidia.com/networking/doca) 2.5.0.
-  See [Installation guide](https://docs.nvidia.com/doca/sdk/installation-guide/index.html).
-* NVIDIA DOCA RMAX library. Can be installed by SDK Manager (see DOCA SDK
-  installation guide) or manually by installing `doca-rmax-libs` and
-  `libdoca-rmax-libs-dev`.
+* [NVIDIA DOCA SDK](https://developer.nvidia.com/networking/doca) 2.7.0036.
+  See [Installation guide](https://docs.nvidia.com/doca/sdk/nvidia+doca+installation+guide+for+linux/index.html).
+* [Rivermax](https://developer.nvidia.com/networking/rivermax) library.
+* NVIDIA DOCA RMAX library. See section "Installing Rivermax Libraries from DOCA" in DOCA Installation guide.
 * [CMake](https://cmake.org) 3.16 or later.
 
 ## Command-line parameters

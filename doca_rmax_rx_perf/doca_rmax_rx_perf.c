@@ -28,6 +28,8 @@
 #include <doca_argp.h>
 #include <doca_buf.h>
 #include <doca_buf_inventory.h>
+#include <doca_ctx.h>
+#include <doca_dev.h>
 #include <doca_log.h>
 #include <doca_mmap.h>
 #include <doca_pe.h>
@@ -36,7 +38,7 @@
 DOCA_LOG_REGISTER(DOCA_RMAX_PERF);
 
 #define APP_NAME "doca_rmax_perf"
-#define APP_VERSION "1.1"
+#define APP_VERSION "1.2"
 
 #define MAX_BUFFERS 2
 

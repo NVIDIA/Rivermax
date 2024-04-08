@@ -60,7 +60,7 @@ set(DOCA_TARGETS)
 
 # Go for default components, if it's not explicitly specified
 if(NOT DOCA_FIND_COMPONENTS)
-    set(DOCA_FIND_COMPONENTS doca doca-rmax)
+    set(DOCA_FIND_COMPONENTS doca-common doca-argp doca-rmax)
 endif()
 
 foreach(_component ${DOCA_FIND_COMPONENTS})
@@ -78,7 +78,7 @@ endforeach()
 
 include(FindPackageHandleStandardArgs)
 
-set(DOCA_VERSION "${DOCA_doca_VERSION}")
+set(DOCA_VERSION "${DOCA_doca-common_VERSION}")
 find_package_handle_standard_args(DOCA
   VERSION_VAR DOCA_VERSION
   REQUIRED_VARS DOCA_VERSION

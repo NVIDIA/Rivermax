@@ -33,6 +33,6 @@ target_sources(doca_rmax_rx_perf
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/doca_rmax_rx_perf.c
 )
 
-find_package(DOCA 2.5.0050 REQUIRED)
+find_package(DOCA 2.7.0036 REQUIRED)
 target_link_libraries(doca_rmax_rx_perf PRIVATE apps_common_base DOCA::DOCA DOCA::doca-rmax)
 
