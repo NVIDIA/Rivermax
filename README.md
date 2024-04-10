@@ -83,6 +83,7 @@ Application List
 - [**rivermax_player**](rivermax_player/README.md) - A demo for a sender application that sends several streams of different types (e.g. video, audio, ancillary)
 - [**doca_rmax_rx_perf**](doca_rmax_rx_perf/README.md) - An RX performance measurement application to be used with the NVIDIA DOCA RMAX library.
 - [**rmax_ipo_receiver**](rmax_ipo_receiver/README.md) - A demo for receiver application that uses Inline Packet Ordering (IPO) feature of Rivermax library.
+- [**rmx_api_demo_apps**](rmx_api_demo_apps/README.md) - A set of demo applications that demonstrate the usage of Rivermax API.
 
 Issues and Contribution
 --------------------
