@@ -2841,14 +2841,9 @@ int main(int argc, char *argv[])
     if (rivermax_thread_affinity == CPU_NONE) {
         std::cout << "Warning - Rivermax internal thread CPU affinity not set!!!" << std::endl;
     } else {
-        const unsigned int num_cores = std::thread::hardware_concurrency();
-        constexpr size_t cores_per_mask = 8 * sizeof(uint64_t);
-        std::vector<uint64_t> core_mask(((num_cores + cores_per_mask - 1) / cores_per_mask), 0);
-        rmx_mark_cpu_for_affinity(core_mask.data(), rivermax_thread_affinity);
-        status = rmx_set_cpu_affinity(core_mask.data(), num_cores);
-        if (status != RMX_OK) {
+        if (!rt_set_rivermax_thread_affinity(rivermax_thread_affinity)) {
             rivermax_thread_affinity = CPU_NONE;
-            std::cerr << "Failed to set desired Rivermax CPU affinity with code:" << status << std::endl;
+            std::cerr << "Failed to set Rivermax internal thread affinity!" << std::endl;
         }
     }
 

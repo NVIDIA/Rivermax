@@ -333,7 +333,7 @@ bool RxStream::main_loop()
 {
     // Check if user set cpu affinity
     if (m_cpu_affinity.size() > 0) {
-        set_cpu_affinity(m_cpu_affinity);
+        rt_set_thread_affinity(m_cpu_affinity);
     }
 
     auto start_time = high_resolution_clock::now();
