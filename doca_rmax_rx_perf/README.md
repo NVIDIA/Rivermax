@@ -9,15 +9,18 @@ library. The code is provided "As Is" and any express or implied warranties, inc
 but not limited to, the implied warranties of merchantability and fitness for a particular
 purpose are disclaimed.
 
-* Release date: 27-Oct-2022
-* Update date: 08-Apr-2024
-* Version: 1.2
-* Compatibility:
-  * Rivermax: 1.30.16
-  * OFED: 23.04-0.5.3.3
-  * DOCA: 2.7.0036
-  * OS: Ubuntu 20.04
-  * Hardware: BlueField 2
+* Release date: 14-Aug-2024
+* Update date: 14-Aug-2024
+* Version: 1.3
+
+### Tested on
+
+* Rivermax: 1.51.6
+* OFED: 24.07-0.6.1.0
+* DOCA: 2.8.0
+* OS: Ubuntu 22.04
+* Hardware:
+  * BlueField-2
 
 ## Documentation
 
@@ -36,24 +39,25 @@ purpose are disclaimed.
 ## Command-line parameters
 
 ```
-Usage: doca_doca_rmax_perf [DOCA Flags] [Program Flags]
+Usage: doca_rmax_rx_perf [DOCA Flags] [Program Flags]
 
 DOCA Flags:
   -h, --help                        Print a help synopsis
   -v, --version                     Print program version information
-  -l, --log-level                   Set the log level for the program <CRITICAL=20, ERROR=30, WARNING=40, INFO=50, DEBUG=60>
+  -l, --log-level                   Set the (numeric) log level for the program <10=DISABLE, 20=CRITICAL, 30=ERROR, 40=WARNING, 50=INFO, 60=DEBUG, 70=TRACE>
+  --sdk-log-level                   Set the SDK (numeric) log level for the program <10=DISABLE, 20=CRITICAL, 30=ERROR, 40=WARNING, 50=INFO, 60=DEBUG, 70=TRACE>
+  -j, --json <path>                 Parse all command flags from an input json file
 
 Program Flags:
   --list                            List available devices
-  -t, --stream-type                 Stream type: generic (default) or RTP-2110
   --scatter-type                    Scattering type: RAW (default), ULP or payload
-  --tstamp-format                   Timestamp format: counter (default), nano or synced
+  --tstamp-format                   Timestamp format: raw (default), free-running or synced
   -i, --interface-ip                IP of the local interface to receive data
   -m, --multicast-dst               Multicast address to bind to
   -s, --multicast-src               Source address to read from
   -p, --port                        Destination port to read from
-  -r, --header-size                 Header size (default 0)
-  -d, --data-size                   Data size (default 1500)
+  -r, --header-size                 Packet's application header size (default 0)
+  -d, --data-size                   Packet's data size (default 1500)
   -k, --packets                     Number of packets to allocate memory for (default 1024)
   -a, --cpu-affinity                Comma separated list of CPU affinity cores for the application main thread
   --sleep                           Amount of microseconds to sleep between requests (default 0)
@@ -63,13 +67,13 @@ Program Flags:
 ```
 
 Examples:
-* List available devices: `doca_doca_rmax_perf --list`
-* Receive a stream: `doca_doca_rmax_perf --interface-ip 1.1.64.67 --multicast-dst 1.1.64.67 --multicast-src 1.1.63.5 --port 7000`
-* Receive a stream (header-data split mode): `doca_doca_rmax_perf --interface-ip 1.1.64.67 --multicast-dst 1.1.64.67 --multicast-src 1.1.63.5 --port 7000 --header-size 20 --data-size 1200`
+* List available devices: `doca_rmax_rx_perf --list`
+* Receive a stream: `doca_rmax_rx_perf --interface-ip 1.1.64.67 --multicast-dst 1.1.64.67 --multicast-src 1.1.63.5 --port 7000`
+* Receive a stream (header-data split mode): `doca_rmax_rx_perf --interface-ip 1.1.64.67 --multicast-dst 1.1.64.67 --multicast-src 1.1.63.5 --port 7000 --header-size 20 --data-size 1200`
 
 ## How to build
 
-From the `doca_doca_rmax_perf` directory run the following commands:
+From the `doca_rmax_rx_perf` directory run the following commands:
 
 ```shell
 $ cmake -B ./build

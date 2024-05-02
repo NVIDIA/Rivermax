@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -37,27 +37,28 @@
 
 DOCA_LOG_REGISTER(DOCA_RMAX_PERF);
 
-#define APP_NAME "doca_rmax_perf"
-#define APP_VERSION "1.2"
+#define APP_NAME "doca_rmax_rx_perf"
+#define APP_VERSION "1.3"
 
 #define MAX_BUFFERS 2
 
-#define DOCA_RMAX_CPUELT(_cpu)  ((_cpu) / DOCA_RMAX_NCPUBITS)
-#define DOCA_RMAX_CPUMASK(_cpu) ((doca_rmax_cpu_mask_t) 1 << ((_cpu) % DOCA_RMAX_NCPUBITS))
-#define DOCA_RMAX_CPU_SET(_cpu, _cpusetp) \
-	do { \
-		size_t _cpu2 = (_cpu); \
-		if (_cpu2 < (8 * sizeof(struct doca_rmax_cpu_affinity_mask))) \
-			(((doca_rmax_cpu_mask_t *)((_cpusetp)->cpu_bits))[DOCA_RMAX_CPUELT(_cpu2)] |= \
-			 DOCA_RMAX_CPUMASK(_cpu2)); \
-	} while (0)
+enum scatter_type {
+	SCATTER_TYPE_RAW,
+	SCATTER_TYPE_ULP,
+	SCATTER_TYPE_PAYLOAD
+};
+
+enum timestamp_format {
+	TIMESTAMP_FORMAT_RAW_COUNTER,
+	TIMESTAMP_FORMAT_FREE_RUNNING,
+	TIMESTAMP_FORMAT_PTP_SYNCED
+};
 
 struct perf_app_config {
 	bool list;
 	bool dump;
-	enum doca_rmax_in_stream_type type;
-	enum doca_rmax_in_stream_scatter_type scatter_type;
-	enum doca_rmax_in_stream_ts_fmt_type tstamp_format;
+	enum scatter_type scatter_type;
+	enum timestamp_format tstamp_format;
 	struct in_addr dev_ip;
 	struct in_addr dst_ip;
 	struct in_addr src_ip;
@@ -67,7 +68,7 @@ struct perf_app_config {
 	uint16_t data_size;
 	uint32_t num_elements;
 	bool affinity_mask_set;
-	struct doca_rmax_cpu_affinity_mask affinity_mask;
+	struct doca_rmax_cpu_affinity *affinity_mask;
 	useconds_t sleep_us;
 	uint32_t min_packets;
 	uint32_t max_packets;
@@ -108,13 +109,14 @@ doca_error_t print_version(void *param, void *config)
 	exit(EXIT_SUCCESS);
 }
 
-static void init_config(struct perf_app_config *config)
+static bool init_config(struct perf_app_config *config)
 {
+	doca_error_t ret;
+
 	config->list = false;
 	config->dump = false;
-	config->type = DOCA_RMAX_IN_STREAM_TYPE_GENERIC;
-	config->scatter_type = DOCA_RMAX_IN_STREAM_SCATTER_TYPE_RAW;
-	config->tstamp_format = DOCA_RMAX_IN_STREAM_TS_FMT_TYPE_RAW_COUNTER;
+	config->scatter_type = SCATTER_TYPE_RAW;
+	config->tstamp_format = TIMESTAMP_FORMAT_RAW_COUNTER;
 	config->dev_ip.s_addr = 0;
 	config->dst_ip.s_addr = 0;
 	config->src_ip.s_addr = 0;
@@ -123,35 +125,35 @@ static void init_config(struct perf_app_config *config)
 	config->hdr_size = 0;
 	config->data_size = 1500;
 	config->num_elements = 1024;
-	config->affinity_mask_set = false;
-	memset(&config->affinity_mask, 0, sizeof(config->affinity_mask));
 	config->sleep_us = 0;
 	config->min_packets = 0;
 	config->max_packets = 0;
+	config->affinity_mask_set = false;
+	ret = doca_rmax_cpu_affinity_create(&config->affinity_mask);
+	if (ret != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create affinity mask: %s", doca_error_get_name(ret));
+		return false;
+	}
+	return true;
+}
+
+void destroy_config(struct perf_app_config *config)
+{
+	doca_error_t ret;
+
+	ret = doca_rmax_cpu_affinity_destroy(config->affinity_mask);
+	if (ret != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to destroy affinity mask: %s", doca_error_get_name(ret));
+	}
 }
 
 static doca_error_t set_list_flag(void *param, void *opaque)
 {
 	struct perf_app_config *config = (struct perf_app_config *)opaque;
 
+	(void)param;
 	config->list = true;
 
-	return DOCA_SUCCESS;
-}
-
-static doca_error_t set_type_param(void *param, void *opaque)
-{
-	struct perf_app_config *config = (struct perf_app_config *)opaque;
-	const char *str = (const char *)param;
-
-	if (strcasecmp(str, "GENERIC") == 0)
-		config->type = DOCA_RMAX_IN_STREAM_TYPE_GENERIC;
-	else if (strcasecmp(str, "RTP-2110") == 0)
-		config->type = DOCA_RMAX_IN_STREAM_TYPE_RTP_2110;
-	else {
-		DOCA_LOG_ERR("unknown stream type '%s' was specified", str);
-		return DOCA_ERROR_INVALID_VALUE;
-	}
 	return DOCA_SUCCESS;
 }
 
@@ -161,11 +163,11 @@ static doca_error_t set_scatter_type_param(void *param, void *opaque)
 	const char *str = (const char *)param;
 
 	if (strcasecmp(str, "RAW") == 0)
-		config->scatter_type = DOCA_RMAX_IN_STREAM_SCATTER_TYPE_RAW;
+		config->scatter_type = SCATTER_TYPE_RAW;
 	else if (strcasecmp(str, "ULP") == 0)
-		config->scatter_type = DOCA_RMAX_IN_STREAM_SCATTER_TYPE_ULP;
+		config->scatter_type = SCATTER_TYPE_ULP;
 	else if (strcasecmp(str, "PAYLOAD") == 0)
-		config->scatter_type = DOCA_RMAX_IN_STREAM_SCATTER_TYPE_PAYLOAD;
+		config->scatter_type = SCATTER_TYPE_PAYLOAD;
 	else {
 		DOCA_LOG_ERR("unknown scatter type '%s' was specified", str);
 		return DOCA_ERROR_INVALID_VALUE;
@@ -178,12 +180,12 @@ static doca_error_t set_tstamp_format_param(void *param, void *opaque)
 	struct perf_app_config *config = (struct perf_app_config *)opaque;
 	const char *str = (const char *)param;
 
-	if (strcasecmp(str, "counter") == 0)
-		config->tstamp_format = DOCA_RMAX_IN_STREAM_TS_FMT_TYPE_RAW_COUNTER;
-	else if (strcasecmp(str, "nano") == 0)
-		config->tstamp_format = DOCA_RMAX_IN_STREAM_TS_FMT_TYPE_RAW_NANO;
+	if (strcasecmp(str, "raw") == 0)
+		config->tstamp_format = TIMESTAMP_FORMAT_RAW_COUNTER;
+	else if (strcasecmp(str, "free-running") == 0)
+		config->tstamp_format = TIMESTAMP_FORMAT_FREE_RUNNING;
 	else if (strcasecmp(str, "synced") == 0)
-		config->tstamp_format = DOCA_RMAX_IN_STREAM_TS_FMT_TYPE_SYNCED;
+		config->tstamp_format = TIMESTAMP_FORMAT_PTP_SYNCED;
 	else {
 		DOCA_LOG_ERR("unknown timestamp format '%s' was specified", str);
 		return DOCA_ERROR_INVALID_VALUE;
@@ -307,6 +309,7 @@ static doca_error_t set_cpu_affinity_param(void *param, void *opaque)
 	struct perf_app_config *config = (struct perf_app_config *)opaque;
 	const char *input = (const char *)param;
 	char *str, *alloc;
+	doca_error_t ret = DOCA_SUCCESS;
 
 	alloc = str = strdup(input);
 	if (str == NULL) {
@@ -318,21 +321,26 @@ static doca_error_t set_cpu_affinity_param(void *param, void *opaque)
 		int idx;
 		char dummy;
 
-		if (sscanf(str, "%d%c", &idx, &dummy) != 1 || idx < 0 || idx >= DOCA_RMAX_CPU_SETSIZE) {
+		if (sscanf(str, "%d%c", &idx, &dummy) != 1) {
 			DOCA_LOG_ERR("bad CPU index '%s' was specified", str);
-			free(alloc);
-			return DOCA_ERROR_INVALID_VALUE;
+			ret = DOCA_ERROR_INVALID_VALUE;
+			goto exit;
 		}
 
-		DOCA_RMAX_CPU_SET(idx, &config->affinity_mask);
+		ret = doca_rmax_cpu_affinity_set(config->affinity_mask, idx);
+		if (ret != DOCA_SUCCESS) {
+			DOCA_LOG_ERR("error setting CPU index '%d' in affinity mask", idx);
+			goto exit;
+		}
 
 		str = NULL;
 	}
 
 	config->affinity_mask_set = true;
+exit:
 	free(alloc);
 
-	return DOCA_SUCCESS;
+	return ret;
 }
 
 static doca_error_t set_sleep_param(void *param, void *opaque)
@@ -390,7 +398,6 @@ bool register_argp_params(void)
 {
 	doca_error_t ret;
 	struct doca_argp_param *list_flag;
-	struct doca_argp_param *type_param;
 	struct doca_argp_param *scatter_type_param;
 	struct doca_argp_param *tstamp_format_param;
 	struct doca_argp_param *dev_ip_param;
@@ -423,23 +430,6 @@ bool register_argp_params(void)
 		return false;
 	}
 
-	/* -t,--stream-type parameter */
-	ret = doca_argp_param_create(&type_param);
-	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ARGP param: %s", doca_error_get_name(ret));
-		return false;
-	}
-	doca_argp_param_set_short_name(type_param, "t");
-	doca_argp_param_set_long_name(type_param, "stream-type");
-	doca_argp_param_set_description(type_param, "Stream type: generic (default) or RTP-2110");
-	doca_argp_param_set_callback(type_param, set_type_param);
-	doca_argp_param_set_type(type_param, DOCA_ARGP_TYPE_STRING);
-	ret = doca_argp_register_param(type_param);
-	if (ret != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to register program param: %s", doca_error_get_name(ret));
-		return false;
-	}
-
 	/* --scatter-type parameter */
 	ret = doca_argp_param_create(&scatter_type_param);
 	if (ret != DOCA_SUCCESS) {
@@ -463,7 +453,7 @@ bool register_argp_params(void)
 		return false;
 	}
 	doca_argp_param_set_long_name(tstamp_format_param, "tstamp-format");
-	doca_argp_param_set_description(tstamp_format_param, "Timestamp format: counter (default), nano or synced");
+	doca_argp_param_set_description(tstamp_format_param, "Timestamp format: raw (default), free-running or synced");
 	doca_argp_param_set_callback(tstamp_format_param, set_tstamp_format_param);
 	doca_argp_param_set_type(tstamp_format_param, DOCA_ARGP_TYPE_STRING);
 	ret = doca_argp_register_param(tstamp_format_param);
@@ -952,13 +942,30 @@ doca_error_t init_stream(struct perf_app_config *config, struct doca_dev *dev,
 		return ret;
 
 	/* fill stream parameters */
-	ret = doca_rmax_in_stream_set_type(data->stream, config->type);
+	switch (config->scatter_type) {
+	case SCATTER_TYPE_RAW:
+		ret = doca_rmax_in_stream_set_scatter_type_raw(data->stream);
+		break;
+	case SCATTER_TYPE_ULP:
+		ret = doca_rmax_in_stream_set_scatter_type_ulp(data->stream);
+		break;
+	case SCATTER_TYPE_PAYLOAD:
+		ret = doca_rmax_in_stream_set_scatter_type_payload(data->stream);
+		break;
+	}
 	if (ret != DOCA_SUCCESS)
 		return ret;
-	ret = doca_rmax_in_stream_set_scatter_type(data->stream, config->scatter_type);
-	if (ret != DOCA_SUCCESS)
-		return ret;
-	ret = doca_rmax_in_stream_set_timestamp_format(data->stream, config->tstamp_format);
+	switch (config->tstamp_format) {
+	case TIMESTAMP_FORMAT_RAW_COUNTER:
+		ret = doca_rmax_in_stream_set_timestamp_format_raw_counter(data->stream);
+		break;
+	case TIMESTAMP_FORMAT_FREE_RUNNING:
+		ret = doca_rmax_in_stream_set_timestamp_format_free_running(data->stream);
+		break;
+	case TIMESTAMP_FORMAT_PTP_SYNCED:
+		ret = doca_rmax_in_stream_set_timestamp_format_ptp_synced(data->stream);
+		break;
+	}
 	if (ret != DOCA_SUCCESS)
 		return ret;
 	ret = doca_rmax_in_stream_set_elements_count(data->stream, config->num_elements);
@@ -1201,8 +1208,8 @@ samples_hex_dump(const void *data, size_t size)
 void handle_completion(struct doca_rmax_in_stream_event_rx_data *event_rx_data, union doca_data event_user_data)
 {
 	struct stream_data *data = event_user_data.ptr;
-	const struct doca_rmax_in_stream_completion *comp =
-		doca_rmax_in_stream_event_rx_data_get_completion(event_rx_data);
+	const struct doca_rmax_in_stream_result *comp =
+		doca_rmax_in_stream_event_rx_data_get_result(event_rx_data);
 
 	if (!comp)
 		return;
@@ -1317,7 +1324,9 @@ int main(int argc, char **argv)
 		return EXIT_FAILURE;
 	}
 
-	init_config(&config);
+	if (!init_config(&config)) {
+		return EXIT_FAILURE;
+	}
 	ret = doca_argp_init(APP_NAME, &config);
 	if (ret != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to init ARGP resources: %s", doca_error_get_name(ret));
@@ -1352,7 +1361,7 @@ int main(int argc, char **argv)
 		}
 
 		if (config.affinity_mask_set) {
-			ret = doca_rmax_set_cpu_affinity_mask(&config.affinity_mask);
+			ret = doca_rmax_set_cpu_affinity_mask(config.affinity_mask);
 			if (ret != DOCA_SUCCESS) {
 				DOCA_LOG_ERR("Error setting CPU affinity mask: %s", doca_error_get_name(ret));
 				return EXIT_FAILURE;
@@ -1427,6 +1436,7 @@ cleanup:
 		return EXIT_FAILURE;
 	}
 	doca_argp_destroy();
+	destroy_config(&config);
 
 	return exit_code;
 }

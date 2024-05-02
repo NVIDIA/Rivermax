@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2022 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2022-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -33,6 +33,6 @@ target_sources(doca_rmax_rx_perf
     PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/doca_rmax_rx_perf.c
 )
 
-find_package(DOCA 2.7.0036 REQUIRED)
+find_package(DOCA 2.8.0024 REQUIRED)
 target_link_libraries(doca_rmax_rx_perf PRIVATE apps_common_base DOCA::DOCA DOCA::doca-rmax)
 
