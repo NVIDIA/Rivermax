@@ -251,22 +251,22 @@ struct cst_data  // calculate stream time data
 struct CpuAffinity
 {
     CpuAffinity() {
-        memset(&affinity_mask, 0, sizeof(affinity_mask));
     }
     virtual ~CpuAffinity() {}
 
-    struct rmax_cpu_set_t affinity_mask;
+private:
+    int m_cpu_core = CPU_NONE;
 
 public:
-    void set_cpu(long cpu) {
-         if (cpu != CPU_NONE) {
-             memset(&affinity_mask, 0, sizeof(affinity_mask));
-             RMAX_CPU_SET(cpu, &affinity_mask);
-         }
+    void set_cpu(int cpu) {
+        m_cpu_core = cpu;
     }
 
-    struct rmax_cpu_set_t *affinity_mask_get() {
-         return &affinity_mask;
+    void set_thread_affinity()
+    {
+        if (m_cpu_core != CPU_NONE) {
+            rt_set_thread_affinity(m_cpu_core);
+        }
     }
 };
 
@@ -355,7 +355,7 @@ struct ScaleDataVideo
         VideoRmaxData &_rmax_data
         , std::shared_ptr<my_queue> &_conv_cb
         , std::shared_ptr<std::condition_variable> &_conv_cv
-        , std::shared_ptr<std::mutex> &_conv_lock, long cpu) :
+        , std::shared_ptr<std::mutex> &_conv_lock, int cpu) :
         rmax_data(
             _rmax_data.width
             , _rmax_data.height
@@ -396,9 +396,9 @@ struct ScaleDataVideo
     }
 
 public:
-    struct rmax_cpu_set_t *affinity_mask_get()
+    void set_thread_affinity()
     {
-        return rmax_data.affinity_mask_get();
+        rmax_data.set_thread_affinity();
     }
 };
 
@@ -415,7 +415,7 @@ struct VideoReaderData: CpuAffinity
         , std::shared_ptr<std::condition_variable> &_conv_cv
         , std::shared_ptr<std::mutex> &_conv_lock
         , VIDEO_TYPE _video_type
-        , long cpu) :
+        , int cpu) :
             CpuAffinity()
             , p_format_context(_p_format_context)
             , p_codec(_p_codec)
@@ -564,33 +564,33 @@ struct AudioReaderData: CpuAffinity
 struct AudioEncodeData
 {
     AudioEncodeData(
-        AudioRmaxData &rmax_data
+        AudioRmaxData &_rmax_data
         , std::shared_ptr<my_queue> &_conv_cb
         , std::shared_ptr<std::condition_variable> &_conv_cv
         , std::shared_ptr<std::mutex> &_conv_lock
         , const AVCodec *_p_codec
         , AVCodecParameters *_p_codec_parameters
-        , int audio_stream_index, long cpu) :
+        , int audio_stream_index, int cpu) :
             rmax_data(
-                rmax_data.bit_rate
-                , rmax_data.sample_rate
-                , rmax_data.channels
-                , rmax_data.frame_size
-                , rmax_data.channel_layout
-                , rmax_data.ptime_usec
-                , rmax_data.payload_type
-                , rmax_data.sdp_path
-                , rmax_data.send_cb
-                , rmax_data.send_cv
-                , rmax_data.send_lock
-                , rmax_data.sync_cv
-                , rmax_data.sync_lock
-                , rmax_data.eof_cv
-                , rmax_data.next_chunk_send_time_ns
-                , rmax_data.timestamp_tick
-                , rmax_data.video_fps
-                , rmax_data.eof_stream_counter
-                , rmax_data.dscp)
+                _rmax_data.bit_rate
+                , _rmax_data.sample_rate
+                , _rmax_data.channels
+                , _rmax_data.frame_size
+                , _rmax_data.channel_layout
+                , _rmax_data.ptime_usec
+                , _rmax_data.payload_type
+                , _rmax_data.sdp_path
+                , _rmax_data.send_cb
+                , _rmax_data.send_cv
+                , _rmax_data.send_lock
+                , _rmax_data.sync_cv
+                , _rmax_data.sync_lock
+                , _rmax_data.eof_cv
+                , _rmax_data.next_chunk_send_time_ns
+                , _rmax_data.timestamp_tick
+                , _rmax_data.video_fps
+                , _rmax_data.eof_stream_counter
+                , _rmax_data.dscp)
                     , conv_cb(_conv_cb)
                     , conv_cv(_conv_cv)
                     , conv_lock(_conv_lock)
@@ -616,9 +616,9 @@ struct AudioEncodeData
     }
 
 public:
-    struct rmax_cpu_set_t *affinity_mask_get()
+    void set_thread_affinity()
     {
-        return rmax_data.affinity_mask_get();
+        rmax_data.set_thread_affinity();
     }
 };
 
@@ -1616,7 +1616,7 @@ void rivermax_audio_sender(AudioRmaxData data)
     if (unlikely(!run_threads)) {
         return;
     }
-    rt_set_thread_affinity(data.affinity_mask_get());
+    data.set_thread_affinity();
     rt_set_thread_priority(RMAX_THREAD_PRIORITY_TIME_CRITICAL);
 
     const size_t num_of_av_packet_in_chunk = 3;
@@ -1820,7 +1820,7 @@ void rivermax_video_sender(VideoRmaxData data)
     int packets_in_frame_or_field = 0;
     uint32_t chunks_num_per_frame_or_field;
     uint16_t px_group_byte_size;
-    rt_set_thread_affinity(data.affinity_mask_get());
+    data.set_thread_affinity();
     rt_set_thread_priority(RMAX_THREAD_PRIORITY_TIME_CRITICAL);
     /*
      * calculate packet sizes using pixel format H & W
@@ -2101,7 +2101,7 @@ end:
 
 void scale_video(ScaleDataVideo scale_data)
 {
-    rt_set_thread_affinity(scale_data.affinity_mask_get());
+    scale_data.set_thread_affinity();
     rt_set_thread_priority(RMAX_THREAD_PRIORITY_TIME_CRITICAL);
 
     std::unique_ptr<SwsContext, std::function<void(SwsContext*)>> swsContext{
@@ -2177,7 +2177,7 @@ void scale_video(ScaleDataVideo scale_data)
 
 void encode_audio(AudioEncodeData audio_encode_data)
 {
-    rt_set_thread_affinity(audio_encode_data.affinity_mask_get());
+    audio_encode_data.set_thread_affinity();
     rt_set_thread_priority(RMAX_THREAD_PRIORITY_TIME_CRITICAL);
 
     auto *p_audio_codec_pcm = avcodec_find_encoder(AV_CODEC_ID_PCM_S24BE);
@@ -2323,7 +2323,7 @@ void read_stream(T rd)
     // Set reader thread affinity after initializing ffmpeg context, otherwise all
     // @ref rd.ffmpeg_thread_count ffmpeg threads will inherit the same core as this reader thread.
     // It will let ffmpeg threads to be set by the OS based on free available cores.
-    rt_set_thread_affinity(rd.affinity_mask_get());
+    rd.set_thread_affinity();
     rt_set_thread_priority(RMAX_THREAD_PRIORITY_TIME_CRITICAL);
 
     uint64_t frames = 0;
@@ -2723,7 +2723,8 @@ static bool set_clock(rivermax_clock_types clock_handler_type, const std::vector
         std::cout << "failed set clock with status: " << status << std::endl;
         return false;
     }
-    return true;
+
+    return wait_rivermax_clock_steady();
 }
 
 static void cleanup()

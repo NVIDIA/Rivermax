@@ -10,21 +10,25 @@ purpose are disclaimed.
 
 ### Details
 
-* Release date: 31-Oct-2022
-* Update date: 31-Oct-2022
-* Version: 1.20.10
+* Release date: 14-Aug-2024
+* Update date: 14-Aug-2024
+* Version: 1.51.6
 
 ### Tested on
 
-* Rivermax: 1.20.10
-* OFED: 5.8-0.2.3.0
-* CUDA: 11.8.0
-* WinOF2: 3.10.50000
-* FFmpeg: 5.1.2
+* Rivermax: 1.51.6
+* OFED: 24.07-0.6.1.0
+* WinOF2: 24.7.50000
 * OS: 
-  * Ubuntu 20.04
+  * Ubuntu 22.04
   * Windows 10
-* Hardware: ConnectX DX 6
+* CUDA: 12.5
+* FFmpeg:
+  * Windows: N-113852-g4a134eb14a-20240229
+  * Linux: 7:4.4.2
+* Hardware:
+  * ConnectX-6 DX
+  * BlueField-2
 
 ## How to Build
 
