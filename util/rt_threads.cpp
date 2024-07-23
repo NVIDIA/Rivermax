@@ -534,22 +534,22 @@ int register_handler(PHANDLER_ROUTINE sig_handler)
 }
 #endif
 
-bool rt_set_thread_affinity(struct rmax_cpu_set_t *cpu_mask)
-{
-    return (cpu_mask)? rivermax::libs::set_affinity(*cpu_mask): true;
-}
-
 void rt_set_thread_affinity(const std::vector<int>& cpu_core_affinities)
 {
+    bool needs_affinity = false;
     rivermax::libs::Affinity::mask cpu_affinity_mask;
 
     memset(&cpu_affinity_mask, 0, sizeof(cpu_affinity_mask));
     for (auto cpu : cpu_core_affinities) {
         if (cpu != CPU_NONE) {
+            needs_affinity = true;
             RMAX_CPU_SET(cpu, &cpu_affinity_mask);
         }
     }
-    rivermax::libs::set_affinity(cpu_affinity_mask);
+
+    if (needs_affinity) {
+        rivermax::libs::set_affinity(cpu_affinity_mask);
+    }
 }
 
 bool rt_set_rivermax_thread_affinity(int cpu_core)
@@ -572,6 +572,13 @@ bool rt_set_rivermax_thread_affinity(int cpu_core)
     }
 
     return true;
+}
+
+void rt_set_thread_affinity(const int cpu_core)
+{
+    if (cpu_core != CPU_NONE) {
+        rivermax::libs::set_affinity(static_cast<size_t>(cpu_core));
+    }
 }
 
 uint64_t default_time_handler(void*) /* XXX should be refactored and combined with media_sender's clock functions */
@@ -679,4 +686,13 @@ bool rivermax_setparams(const std::vector<std::string> &assignments)
         }
     }
     return true;
+}
+
+bool wait_rivermax_clock_steady()
+{
+    rmx_status status;
+    while ((status = rmx_check_clock_steady()) == RMX_BUSY) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return (status == RMX_OK);
 }

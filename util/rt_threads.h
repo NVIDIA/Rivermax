@@ -73,7 +73,7 @@ const std::map<std::string, std::pair<std::string, Rational>> supported_fps_map 
         {std::string("24"), Rational(24)}
     },
     {
-        std::string("25"), 
+        std::string("25"),
         {std::string("25"), Rational(25)}
     },
     {
@@ -127,9 +127,9 @@ void *color_set(enum FONT_COLOR color);
 void color_reset(void *ctx);
 bool cpu_affinity_get(std::stringstream &s, long &ret);
 bool rivermax_validate_thread_affinity_cpus(int internal_thread_affinity, std::vector<int> &cpus);
-bool rt_set_thread_affinity(struct rmax_cpu_set_t *cpu_mask);
 void rt_set_thread_affinity(const std::vector<int>& cpu_core_affinities);
 bool rt_set_rivermax_thread_affinity(int cpu_core);
+void rt_set_thread_affinity(const int cpu_core);
 int rt_set_realtime_class(void);
 int rt_set_thread_priority(int prio);
 uint16_t get_cache_line_size(void);
@@ -638,6 +638,8 @@ int set_enviroment_variable(const std::string &name, const std::string &value);
 rmx_status rivermax_setparam(const std::string &name, const std::string &value, bool final);
 
 bool rivermax_setparams(const std::vector<std::string> &assignments);
+
+bool wait_rivermax_clock_steady();
 
 #endif // _RT_THREADS_H_
 

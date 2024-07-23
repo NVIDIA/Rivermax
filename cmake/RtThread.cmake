@@ -31,7 +31,7 @@ This module provides the following imported targets, if found:
 
 if (NOT TARGET Utils::RtThread)
     find_package(Threads REQUIRED)
-    find_package(Rivermax REQUIRED)
+    find_package(Rivermax 1.51.6 REQUIRED)
 
     set(RT_THREAD_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../util)
     set(LIBS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../libs)

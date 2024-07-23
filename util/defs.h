@@ -18,7 +18,12 @@
 #ifndef TESTS_UTIL_DEFS_H_
 #define TESTS_UTIL_DEFS_H_
 
+#include <cstdint>
+#include <string>
+
+#ifndef NOT_IN_USE
 #define NOT_IN_USE(a) ((void)(a))
+#endif
 
 #define SLEEP_THRESHOLD_MS (2)
 

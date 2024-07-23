@@ -154,8 +154,6 @@ if (WIN32)
     message(STATUS "WindOF2 version ${Rivermax_WinOF2_VERSION} found!")
     mark_as_advanced(Rivermax_WinOF2_VERSION)
   endif()
-else()
-  find_component(DPCP dpcp)
 endif()
 
 # Identify Rivermax files and version

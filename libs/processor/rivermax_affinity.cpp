@@ -1,5 +1,5 @@
 /*
- * Copyright © 2024 NVIDIA CORPORATION & AFFILIATES. ALL RIGHTS RESERVED.
+ * Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. ALL RIGHTS RESERVED.
  *
  * This software product is a proprietary product of Nvidia Corporation and its affiliates
  * (the "Company") and all right, title, and interest in and to the software
@@ -11,8 +11,10 @@
  */
 
 #include "rivermax_affinity.h"
+#include <cstddef>
 #include <cstdio>
 #include <exception>
+#include <stdexcept>
 
 namespace rivermax
 {
@@ -40,18 +42,7 @@ void Affinity::set(std::thread &thread, const size_t processor)
 void Affinity::set(std::thread &thread, const mask &cpu_mask)
 {
     editor editor(*this, thread.native_handle());
-    size_t processor = 0;
-    for (auto entry: cpu_mask.rmax_bits) {
-        if (!entry) {
-            processor += sizeof(rmax_cpu_mask_t) * 8;
-            continue;
-        }
-        for (rmax_cpu_mask_t mask = 1; mask; mask <<= 1, processor++) {
-            if (entry & mask) {
-                editor.set(processor);
-            }
-        }
-    }
+    fill_with(cpu_mask, editor);    
     editor.apply();
 }
 
@@ -72,6 +63,7 @@ void Affinity::set(const mask &cpu_mask)
 void Affinity::fill_with(const mask &cpu_mask, editor &editor)
 {
     size_t processor = 0;
+    size_t count = 0;
     for (auto entry: cpu_mask.rmax_bits) {
         if (!entry) {
             processor += sizeof(rmax_cpu_mask_t) * 8;
@@ -80,9 +72,13 @@ void Affinity::fill_with(const mask &cpu_mask, editor &editor)
         for (rmax_cpu_mask_t mask = 1; mask; mask <<= 1, processor++) {
             if (entry & mask) {
                 editor.set(processor);
+                ++count;
             }
         }
-    }  
+    }
+    if (count == 0) {
+        throw std::underflow_error("Affinity mask shall not be all-zeros.");
+    }
 }
 
 bool set_affinity(const size_t processor) noexcept 
