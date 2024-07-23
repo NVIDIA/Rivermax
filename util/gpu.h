@@ -18,6 +18,7 @@
 #ifndef _GENERIC_RECEIVER_GPU_H_
 #define _GENERIC_RECEIVER_GPU_H_
 
+#include <cerrno>
 #include "defs.h"
 
 #define GPU_ID_INVALID -1
@@ -34,29 +35,16 @@ typedef struct gpu_bar1_memory_info {
     uint64_t used; /**< Allocated Used Memory (in bytes) */
 } gpu_bar1_memory_info;
 
-typedef enum {
-    GPU_DEFAULT = (1ul << 0),
-    GPU_SET_MAX_CLOCK_FREQUENCY = (1ul << 1), /**< set GPU and memory clock to lock on max frequency */
-} gpu_init_config_flags;
-
-/**
- * @brief Configuration for initialize GPU
- *
- */
-typedef struct gpu_init_config {
-    uint64_t flags; /**< Configuration flags, using bits from @ref gpu_init_config_flags */
-} gpu_init_config;
-
 #ifdef CUDA_ENABLED
 #include <iostream>
 #include <cuda_runtime.h>
 #include <cuda.h>
 
-bool gpu_init(int gpu_id, gpu_init_config& init_config);
-bool gpu_uninit(int gpu_id, gpu_init_config& init_config);
+bool gpu_init(int gpu_id);
+bool gpu_uninit(int gpu_id);
 bool verify_gpu_device_id(int device_id);
 const std::string get_gpu_device_name(int device_id);
-size_t gpu_align_physical_allocation_size(int gpu_id, size_t acllocation_size);
+size_t gpu_align_physical_allocation_size(int gpu_id, size_t allocation_size);
 uint32_t* gpu_allocate_counter();
 uint32_t gpu_read_counter(uint32_t *counter);
 void gpu_reset_counter(uint32_t *counter);
@@ -68,19 +56,19 @@ bool gpu_memcpy(void* dst, const void* src, size_t count);
 void gpu_compare_checksum(uint32_t expected, unsigned char* data, size_t size, uint32_t* mismatches);
 bool set_gpu_device(int gpu_id);
 #ifndef TEGRA_ENABLED
-bool gpu_set_locked_clocks_max_freq(int gpu_id);
-bool gpu_reset_locked_clocks(int gpu_id);
+int gpu_set_locked_clocks_max_freq(int gpu_id);
+int gpu_reset_locked_clocks(int gpu_id);
 bool gpu_query_bar1_memory_info(int gpu_id, gpu_bar1_memory_info& mem_info);
 bool gpu_verify_allocated_bar1_size(int gpu_id, size_t size);
 void* cudaAllocateMmap(int gpu_id, size_t size, size_t align);
 bool cudaFreeMmap(uint64_t* ptr, size_t size);
 #else // TEGRA_ENABLED
-static inline bool gpu_set_locked_clocks_max_freq(int gpu_id)
+static inline int gpu_set_locked_clocks_max_freq(int gpu_id)
 {
     NOT_IN_USE(gpu_id);
-    return true;
+    return 0;
 }
-static inline bool gpu_reset_locked_clocks(int gpu_id)
+static inline int gpu_reset_locked_clocks(int gpu_id)
 {
     NOT_IN_USE(gpu_id);
     return true;
@@ -100,17 +88,15 @@ static inline bool gpu_verify_allocated_bar1_size(int gpu_id, size_t size)
 #endif
 #else // !CUDA_ENABLED
 
-static inline bool gpu_init(int gpu_id, gpu_init_config& init_config)
+static inline bool gpu_init(int gpu_id)
 {
     NOT_IN_USE(gpu_id);
-    NOT_IN_USE(init_config);
     return false;
 }
 
-static inline bool gpu_uninit(int gpu_id, gpu_init_config& init_config)
+static inline bool gpu_uninit(int gpu_id)
 {
     NOT_IN_USE(gpu_id);
-    NOT_IN_USE(init_config);
     return false;
 }
 
@@ -217,13 +203,13 @@ static inline bool set_gpu_device(int gpu_id)
     return false;
 }
 
-static inline bool gpu_set_locked_clocks_max_freq(int gpu_id)
+static inline int gpu_set_locked_clocks_max_freq(int gpu_id)
 {
     NOT_IN_USE(gpu_id);
-    return false;
+    return -ENOTSUP;
 }
 
-static inline bool gpu_reset_locked_clocks(int gpu_id)
+static inline int gpu_reset_locked_clocks(int gpu_id)
 {
     NOT_IN_USE(gpu_id);
     return false;

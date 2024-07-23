@@ -40,5 +40,5 @@ target_sources(generic_receiver
         ${UTILS_SOURCE_DIR}/memory_allocator.cpp
 )
 
-find_package(Rivermax 1.41.11 REQUIRED)
+find_package(Rivermax 1.51.6 REQUIRED)
 target_link_libraries(generic_receiver PRIVATE apps_common_base Rivermax::Rivermax Utils::RtThread)

@@ -72,6 +72,7 @@ public:
             , uint16_t header_size
             , const sockaddr_in &addr
             , int gpu
+            , bool wait_for_event
             , bool use_checksum_header
             , const std::vector<int>& cpu_affinity);
 
@@ -128,6 +129,11 @@ public:
      */
     virtual void detach_flow();
 
+    /**
+     * Initialize wait mode.
+     */
+    bool init_wait();
+
     void* allocate_buffer(std::unique_ptr<MemoryAllocator> &mem_allocator, std::shared_ptr<MemoryUtils> &mem_utils,
         size_t buffer_len, size_t align, bool allow_fallback);
 
@@ -183,6 +189,9 @@ protected:
 
     // ID for the Rivermax stream object.
     rmx_stream_id m_stream_id;
+
+    // Event manager used in "wait" mode.
+    EventMgr m_event_mgr;
 
     // Network flow descriptor used for attachment.
     rmx_input_flow m_receive_flow;
@@ -246,6 +255,9 @@ private:
     // Rivermax flow tag that is attached to the stream.
     uint32_t m_flow_tag;
 
+    // Whether or not to use wait mode.
+    bool m_wait_for_event;
+
     // Whether or not to use the ChecksumHeader.
     bool m_use_checksum_header;
 
@@ -264,4 +276,9 @@ private:
 
     // Desired timestamp format for incoming packets
     rmx_input_timestamp_format m_timestamp_format;
+
+    /**
+     * Initialize stream specific event channel.
+     */
+    bool init_event_channel();
 };

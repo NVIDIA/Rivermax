@@ -38,6 +38,7 @@ RxStream::RxStream(rmx_input_stream_params_type rx_type
                  , uint16_t header_size
                  , const sockaddr_in &addr
                  , int gpu
+                 , bool wait_for_event
                  , bool use_checksum_header
                  , const std::vector<int>& cpu_affinity)
         : m_stream_id(INVALID_STREAM_ID)
@@ -53,6 +54,7 @@ RxStream::RxStream(rmx_input_stream_params_type rx_type
         , m_addr(addr)
         , m_gpu(gpu)
         , m_flow_tag(0)
+        , m_wait_for_event(wait_for_event)
         , m_use_checksum_header(use_checksum_header)
         , m_first_pkt(true)
         , m_cpu_affinity(cpu_affinity)
@@ -233,6 +235,21 @@ void RxStream::detach_flow()
     }
 }
 
+bool RxStream::init_event_channel()
+{
+    return m_event_mgr.init(m_stream_id);
+}
+
+bool RxStream::init_wait()
+{
+    if (m_wait_for_event) {
+        if (!init_event_channel()) {
+            return false;
+        }
+    }
+    return true;
+}
+
 void* RxStream::allocate_buffer(std::unique_ptr<MemoryAllocator> &mem_allocator, std::shared_ptr<MemoryUtils> &mem_utils,
         size_t buffer_len, size_t align, bool allow_fallback)
 {
@@ -258,12 +275,29 @@ void* RxStream::allocate_buffer(std::unique_ptr<MemoryAllocator> &mem_allocator,
 
 rmx_status RxStream::get_next_chunk(const rmx_input_completion *&comp)
 {
+    rmx_status status;
     if (!is_initialized()) {
         std::cerr << "Error: Stream not initialized." << std::endl;
         return RMX_NOT_INITIALIZED;
     }
 
-    rmx_status status = rmx_input_get_next_chunk(&m_chunk_handle);
+    if (m_wait_for_event) {
+        // Do a single poll before waiting for events. Otherwise, there is
+        // a risk to block forever if there are no available RX buffers/strides
+        // in the RX ring.
+        status = rmx_input_get_next_chunk(&m_chunk_handle);
+        if (status == RMX_CHECKSUM_ISSUE) {
+            std::cerr << "Error: CRC" << std::endl;
+            status = RMX_OK;
+        }
+        comp = rmx_input_get_chunk_completion(&m_chunk_handle);
+        if (rmx_input_get_completion_chunk_size(comp) > 0 || status == RMX_SIGNAL) {
+            return status;
+        }
+        m_event_mgr.request_notification(m_stream_id);
+    }
+
+    status = rmx_input_get_next_chunk(&m_chunk_handle);
     if (status == RMX_CHECKSUM_ISSUE) {
         std::cerr << "Error: CRC" << std::endl;
         status = RMX_OK;
@@ -491,6 +525,7 @@ struct GenericReceiverArgs
     uint16_t flow_id = 1;
     int gpu = GPU_ID_INVALID;
     bool use_checksum_header = false;
+    bool wait_for_event = false;
     std::vector<int> cpu_affinity;
 };
 
@@ -509,11 +544,9 @@ bool run(const GenericReceiverArgs& args)
 
     bool status = false;
 
-    gpu_init_config gp_init_config;
-    memset(&gp_init_config, 0, sizeof(gp_init_config));
     if (args.gpu != GPU_ID_INVALID) {
 
-        status = gpu_init(args.gpu, gp_init_config);
+        status = gpu_init(args.gpu);
         if (!status) {
             return false;
         }
@@ -528,7 +561,8 @@ bool run(const GenericReceiverArgs& args)
     std::unique_ptr<RxStream> p_stream = std::make_unique<RxStream>(RMX_INPUT_APP_PROTOCOL_PACKET,
                                       RMX_INPUT_TIMESTAMP_RAW_NANO,
                                       args.buffer_elements, args.payload_size, expected_header_size,
-                                      local_addr, args.gpu, args.use_checksum_header, args.cpu_affinity);
+                                      local_addr, args.gpu, args.wait_for_event,
+                                      args.use_checksum_header, args.cpu_affinity);
     if (!p_stream ) {
         std::cerr << "Failed to create stream." << std::endl;
         return false;
@@ -567,6 +601,12 @@ bool run(const GenericReceiverArgs& args)
         return false;
     }
 
+    // Initialize wait mode, if requested.
+    if (!p_stream->init_wait()) {
+        std::cerr << "Event channel initialization error." << std::endl;
+        return false;
+    }
+
     // Run the main loop.
     std::cout << "Running main receive loop..." << std::endl;
     status = p_stream->main_loop();
@@ -578,7 +618,7 @@ bool run(const GenericReceiverArgs& args)
     }
 
     if (args.gpu != GPU_ID_INVALID) {
-        gpu_uninit(args.gpu, gp_init_config);
+        gpu_uninit(args.gpu);
     }
 
     return true;
@@ -598,6 +638,7 @@ int main(int argc, char *argv[])
     app.add_option("-d,--data-size", args.payload_size, "User data (payload) size", true)->check(CLI::PositiveNumber);
     app.add_option("-k,--packets", args.buffer_elements, "Number of packets to allocate memory for", true)->check(CLI::PositiveNumber);
     app.add_option("-f,--flow-id", args.flow_id, "Flow id to use", true)->check(CLI::PositiveNumber);
+    app.add_flag("-w,--wait-event", args.wait_for_event, "Wait for packets instead of busy loop");
 #ifdef CUDA_ENABLED
     app.add_option("-g,--gpu", args.gpu, "GPU to use for GPUDirect (default doesn't use GPU)", true);
 #endif
