@@ -85,6 +85,11 @@ Application List
 - [**rmax_ipo_receiver**](rmax_ipo_receiver/README.md) - A demo for receiver application that uses Inline Packet Ordering (IPO) feature of Rivermax library.
 - [**rmx_api_demo_apps**](rmx_api_demo_apps/README.md) - A set of demo applications that demonstrate the usage of Rivermax API.
 
+Tuning
+--------------------
+
+- [**windows_tuning**](windows_tuning/README.md) -  Two Windows scripts to automate and optimize system and network settings for Rivermax.
+
 Issues and Contribution
 --------------------
 
