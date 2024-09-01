@@ -12,18 +12,18 @@ purpose are disclaimed.
 
 ### Details
 
-* Release date: 31-01-2023
-* Update date: 27-03-2024
-* Version: 1.50
+* Release date: 14-Aug-2024
+* Update date: 14-Aug-2024
+* Version: 1.51.6
 
 ### Tested on
 
-* Rivermax: 1.50
-* OFED: 24.04-0.3.8.0
-* WinOF2: 24.4
+* Rivermax: 1.51.6
+* OFED: 24.07-0.6.1.0
+* WinOF2: 24.7.50000
 * OS:
-  * Ubuntu 20.04
   * Ubuntu 22.04
+  * Ubuntu 24.04
   * Windows 10
 * Hardware:
   * ConnectX-6 DX
