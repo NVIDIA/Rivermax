@@ -13,9 +13,10 @@ The `RmxInputApiBase` class provides basic (non Rivermax specific) functionality
 ## Structure
 
 ```
-rmx_api_demo_apps/rmx_input_api  # Rivermax Input API demo applications directory
-├── README.md                    # This file
-├── rmx_receive_demo_app         # Rivermax Input API basic receive demo application
-├── rmx_input_api_base.cpp       # Rivermax Input API base class implementation
-└── rmx_input_api_base.h         # Rivermax Input API base class header
+rmx_api_demo_apps/rmx_input_api         # Rivermax Input API demo applications directory
+├── README.md                           # This file
+├── rmx_receive_demo_app                # Rivermax Input API basic receive demo application
+├── rmx_multi_source_receive_demo_app   # Rivermax Input API multi source receive demo application
+├── rmx_input_api_base.cpp              # Rivermax Input API base class implementation
+└── rmx_input_api_base.h                # Rivermax Input API base class header
 ```
