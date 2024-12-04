@@ -14,8 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cstddef>
 #include <cinttypes>
-#include <cstring>
 #include <thread>
 
 #ifdef __linux__
@@ -35,7 +35,7 @@ using namespace ral::lib::services;
 
 ReturnStatus RmxReceiveDemoApp::operator()()
 {
-    /* Settings initialization */
+    /* Initialize settings */
 
     /** Initialize app settings (@ref m_app_settings) **/
     // Done in @ref RmxInAPIBaseDemoApp::post_cli_parse_initialization, called from @ref RmxAPIBaseDemoApp::initialize.
@@ -67,17 +67,7 @@ ReturnStatus RmxReceiveDemoApp::operator()()
     status = rmx_input_determine_mem_layout(&stream_params);
     EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to determine memory layout")
 
-    rmx_mem_region* input_mem_buffer = rmx_input_get_mem_block_buffer(&stream_params, sub_block_id);
     size_t data_stride_size_bytes = rmx_input_get_stride_size(&stream_params, sub_block_id);
-    auto mem_allocator = m_rmax_apps_lib.get_memory_allocator(AllocatorType::Malloc, m_app_settings);
-    auto mem_utils = mem_allocator->get_memory_utils();
-    auto mem_alignment = get_cache_line_size();
-
-    input_mem_buffer->addr = mem_allocator->allocate_aligned(input_mem_buffer->length, mem_alignment);
-    EXIT_ON_CONDITION_WITH_CLEANUP(input_mem_buffer->addr == nullptr, "Failed to allocate memory")
-    auto rc = mem_utils->memory_set(input_mem_buffer->addr, 0, input_mem_buffer->length);
-    EXIT_ON_CONDITION_WITH_CLEANUP(rc != ReturnStatus::success, "Failed to set memory")
-    input_mem_buffer->mkey = RMX_MKEY_INVALID;
 
     /** Create the stream **/
     rmx_stream_id stream_id;
