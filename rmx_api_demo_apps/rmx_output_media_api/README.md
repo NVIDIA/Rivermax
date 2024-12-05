@@ -20,5 +20,6 @@ rmx_api_demo_apps/rmx_output_media_api           # Rivermax Output Media API dem
 ├── rmx_output_media_api_base.h                  # Rivermax Output Media API base class header
 ├── rmx_media_send_demo_app                      # Rivermax Output Media API basic send demo application
 ├── rmx_memory_allocation_media_send_demo_app    # Rivermax Output Media API memory allocation send demo application
-└── rmx_memory_registration_media_send_demo_app  # Rivermax Output Media API memory registration send demo application
+├── rmx_memory_registration_media_send_demo_app  # Rivermax Output Media API memory registration send demo application
+└── rmx_hds_media_send_demo_app                  # Rivermax Output Media API header-data split send demo application
 ```
