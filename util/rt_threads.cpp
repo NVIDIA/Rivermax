@@ -692,12 +692,3 @@ bool rivermax_setparams(const std::vector<std::string> &assignments)
     }
     return true;
 }
-
-bool wait_rivermax_clock_steady()
-{
-    rmx_status status;
-    while ((status = rmx_check_clock_steady()) == RMX_BUSY) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-    return (status == RMX_OK);
-}

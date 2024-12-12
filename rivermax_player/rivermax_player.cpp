@@ -2724,7 +2724,10 @@ static bool set_clock(rivermax_clock_types clock_handler_type, const std::vector
         return false;
     }
 
-    return wait_rivermax_clock_steady();
+    while ((status = rmx_check_clock_steady()) == RMX_BUSY) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    return (status == RMX_OK);
 }
 
 static void cleanup()

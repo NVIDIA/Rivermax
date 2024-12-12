@@ -639,7 +639,5 @@ rmx_status rivermax_setparam(const std::string &name, const std::string &value, 
 
 bool rivermax_setparams(const std::vector<std::string> &assignments);
 
-bool wait_rivermax_clock_steady();
-
 #endif // _RT_THREADS_H_
 
