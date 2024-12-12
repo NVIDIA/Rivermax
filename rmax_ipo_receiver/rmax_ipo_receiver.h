@@ -30,7 +30,7 @@
 
 #include "api/rmax_apps_lib_api.h"
 #include "io_node/io_node.h"
-#include "apps/rmax_base_app.h"
+#include "apps/rmax_receiver_base.h"
 
 using namespace ral::lib::core;
 using namespace ral::lib::services;
@@ -48,18 +48,18 @@ namespace rmax_ipo_receiver
 constexpr const char* APP_DESCRIPTION = "NVIDIA Rivermax IPO receiver demo app ";
 constexpr const char* APP_EXAMPLES = \
     "\nExamples:\n"
-    "  1. rmax_ipo_receiver --local-ip 1.2.3.4 --src-ip 6.7.8.9 --dst-ip 1.2.3.4 -p 50020 -v\n"
-    "  2. rmax_ipo_receiver --local-ip 1.2.3.4,1.2.3.5 --src-ip 6.7.8.9,6.7.8.10 --dst-ip 1.2.3.4,1.2.3.5 -p 50020,50120 -v\n"
-    "  3. rmax_ipo_receiver --local-ip 1.2.3.4,1.2.3.5 --src-ip 6.7.8.9,6.7.8.10 --dst-ip 1.2.3.4,1.2.3.5 -p 50020,50120 --app-hdr-size 50 -v\n"
-    "  4. rmax_ipo_receiver --local-ip 1.2.3.4,1.2.3.5 --src-ip 6.7.8.9,6.7.8.10 --dst-ip 239.1.1.1,239.1.1.2 -p 50020,50120 -v\n"
-    "  5. rmax_ipo_receiver --local-ip 1.2.3.4,1.2.3.5 --src-ip 6.7.8.9,6.7.8.10 --dst-ip 239.1.1.1,239.1.1.2 -p 50020,50120 --threads 2 --streams 10 -a 1,2 -i 3\n";
+    "  1. rmax_ipo_receiver --local-ips 1.2.3.4 --src-ips 6.7.8.9 --dst-ips 1.2.3.4 -p 50020 -v\n"
+    "  2. rmax_ipo_receiver --local-ips 1.2.3.4,1.2.3.5 --src-ips 6.7.8.9,6.7.8.10 --dst-ips 1.2.3.4,1.2.3.5 -p 50020,50120 -v\n"
+    "  3. rmax_ipo_receiver --local-ips 1.2.3.4,1.2.3.5 --src-ips 6.7.8.9,6.7.8.10 --dst-ips 1.2.3.4,1.2.3.5 -p 50020,50120 --app-hdr-size 50 -v\n"
+    "  4. rmax_ipo_receiver --local-ips 1.2.3.4,1.2.3.5 --src-ips 6.7.8.9,6.7.8.10 --dst-ips 239.1.1.1,239.1.1.2 -p 50020,50120 -v\n"
+    "  5. rmax_ipo_receiver --local-ips 1.2.3.4,1.2.3.5 --src-ips 6.7.8.9,6.7.8.10 --dst-ips 239.1.1.1,239.1.1.2 -p 50020,50120 --threads 2 --streams 10 -a 1,2 -i 3\n";
 
 /**
  * @brief: IPO Receiver application.
  *
  * This is an example of usage application for Rivermax Inline Packet Ordering RX API.
  */
-class IPOReceiverApp : public RmaxBaseApp
+class IPOReceiverApp : public RmaxReceiverBaseApp
 {
 private:
     static constexpr uint32_t DEFAULT_NUM_OF_PACKETS_IN_CHUNK = 262144;
@@ -67,8 +67,6 @@ private:
 
     /* Sender objects container */
     std::vector<std::unique_ptr<IPOReceiverIONode>> m_receivers;
-    /* Stream per thread distribution */
-    std::unordered_map<size_t, size_t> m_streams_per_thread;
     /* Network recv flows */
     std::vector<std::vector<FourTupleFlow>> m_flows;
     /* NIC device interfaces */
@@ -81,9 +79,6 @@ private:
     // by SMPTE ST 2022-7:2019 "Seamless Protection Switching of RTP Datagrams".
     uint64_t m_max_path_differential_us = 50000;
     bool m_is_extended_sequence_number = false;
-    bool m_register_memory = false;
-    byte_t* m_header_buffer = nullptr;
-    byte_t* m_payload_buffer = nullptr;
     size_t m_num_paths_per_stream = 0;
 
 public:
@@ -95,11 +90,9 @@ public:
      */
     IPOReceiverApp(int argc, const char* argv[]);
     virtual ~IPOReceiverApp() = default;
-    ReturnStatus run() override;
 private:
     void add_cli_options() final;
     ReturnStatus initialize_connection_parameters() final;
-    ReturnStatus initialize_rivermax_resources() final;
     /**
      * @brief: Initializes network receive flows.
      *
@@ -111,15 +104,6 @@ private:
      */
     void configure_network_flows();
     /**
-     * @brief: Distributes work for threads.
-     *
-     * This method is responsible for distributing work to threads, by
-     * distributing number of streams per receiver thread uniformly.
-     * In future development, this can be extended to different
-     * streams per thread distribution policies.
-     */
-    void distribute_work_for_threads();
-    /**
      * @brief: Initializes receiver I/O nodes.
      *
      * This method is responsible for initialization of
@@ -128,35 +112,29 @@ private:
      * method, will be the contexts to the std::thread objects will run in
      * @ref ral::apps::RmaxBaseApp::run_threads method.
      */
-    void initialize_receive_io_nodes();
+    void initialize_receive_io_nodes() final;
     /**
-     * @brief: Allocates application memory and registers it if requested.
+     * @brief: Registers previously allocated memory if requested.
      *
-     * This method is responsible for allocation of the required memory for
-     * the application using @ref ral::lib::services::MemoryAllocator interface.
-     * The allocation policy of the application is allocating one big memory
-     * block. This memory block will be distributed to the different
-     * components of the application.
-     *
-     * If @ref m_register_memory is set then this function also registers
-     * allocated memory using @ref rmax_register_memory on all devices.
+     * If @ref m_register_memory is set then this function registers
+     * application memory using @ref rmax_register_memory.
      *
      * @return: Returns status of the operation.
      */
-    ReturnStatus allocate_app_memory();
+    ReturnStatus register_app_memory() final;
     /**
-     * @brief Unregister previously registered memory.
+     * @brief: Unregister previously registered memory.
      *
      * Unregister memory using @ref rmax_deregister_memory.
      */
-    void unregister_app_memory();
+    void unregister_app_memory() final;
     /**
      * @brief: Distributes memory for receivers.
      *
      * This method is responsible for distributing the memory allocated
      * by @ref allocate_app_memory to the receivers of the application.
      */
-    void distribute_memory_for_receivers();
+    void distribute_memory_for_receivers() final;
     /**
      * @brief: Returns the memory size for all the receive streams.
      *
@@ -169,18 +147,11 @@ private:
      *
      * @return: Return status of the operation.
      */
-    ReturnStatus get_total_ipo_streams_memory_size(size_t& hdr_mem_size, size_t& pld_mem_size);
+    ReturnStatus get_total_streams_memory_size(size_t& hdr_mem_size, size_t& pld_mem_size) final;
     /**
-     * @brief: Allocates memory and aligns it to page size.
-     *
-     * @param [in]  header_size:  Requested header memory size.
-     * @param [in]  payload_size: Requested payload memory size.
-     * @param [out] header:       Allocated header memory pointer.
-     * @param [out] payload:      Allocated payload memory pointer.
-     *
-     * @return: True if successful.
+     * @brief: Runs application threads.
      */
-    bool allocate_and_align(size_t header_size, size_t payload_size, byte_t*& header, byte_t*& payload);
+    void run_receiver_threads() final;
 };
 
 } // namespace rmax_xstream_media_sender

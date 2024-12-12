@@ -47,7 +47,7 @@ int main(int argc, const char* argv[])
 }
 
 IPOReceiverApp::IPOReceiverApp(int argc, const char* argv[]) :
-    RmaxBaseApp(APP_DESCRIPTION, APP_EXAMPLES)
+    RmaxReceiverBaseApp(APP_DESCRIPTION, APP_EXAMPLES)
 {
     m_obj_init_status = initialize(argc, argv);
 }
@@ -65,8 +65,7 @@ void IPOReceiverApp::add_cli_options()
     m_cli_parser_manager->add_option(CLIOptStr::LOCAL_IPS);
     m_cli_parser_manager->add_option(CLIOptStr::DST_PORTS);
     m_cli_parser_manager->add_option(CLIOptStr::THREADS);
-    m_cli_parser_manager->add_option(CLIOptStr::STREAMS)
-        ->check(StreamToThreadsValidator(m_app_settings->num_of_threads));
+    m_cli_parser_manager->add_option(CLIOptStr::STREAMS);
     m_cli_parser_manager->add_option(CLIOptStr::PACKETS);
     m_cli_parser_manager->add_option(CLIOptStr::PAYLOAD_SIZE);
     m_cli_parser_manager->add_option(CLIOptStr::APP_HDR_SIZE);
@@ -75,14 +74,15 @@ void IPOReceiverApp::add_cli_options()
     m_cli_parser_manager->add_option(CLIOptStr::SLEEP_US);
 #ifdef CUDA_ENABLED
     m_cli_parser_manager->add_option(CLIOptStr::GPU_ID);
+    m_cli_parser_manager->add_option(CLIOptStr::LOCK_GPU_CLOCKS);
 #endif
     m_cli_parser_manager->add_option(CLIOptStr::ALLOCATOR_TYPE);
+    m_cli_parser_manager->add_option(CLIOptStr::REGISTER_MEMORY);
     m_cli_parser_manager->add_option(CLIOptStr::VERBOSE);
 
     parser->add_option("-D,--max-pd", m_max_path_differential_us, "Maximum path differential, us", true)
         ->check(CLI::Range(1, USECS_IN_SECOND));
     parser->add_flag("-X,--ext-seq-num", m_is_extended_sequence_number, "Parse extended sequence number from RTP payload");
-    parser->add_flag("--register-memory", m_register_memory, "Register memory on application side for better performance");
 }
 
 ReturnStatus IPOReceiverApp::initialize_connection_parameters()
@@ -119,45 +119,25 @@ ReturnStatus IPOReceiverApp::initialize_connection_parameters()
         }
      }
 
-    if (m_register_memory && m_app_settings->packet_app_header_size == 0) {
+    if (m_app_settings->register_memory && m_app_settings->packet_app_header_size == 0) {
         std::cerr << "Memory registration is supported only in header-data split mode!" << std::endl;
         return ReturnStatus::failure;
     }
 
-    return ReturnStatus::success;
-}
-
-ReturnStatus IPOReceiverApp::run()
-{
-    if (m_obj_init_status != ReturnStatus::obj_init_success) {
-        return m_obj_init_status;
-    }
-
-    try {
-        distribute_work_for_threads();
-        configure_network_flows();
-        initialize_receive_io_nodes();
-        ReturnStatus rc = allocate_app_memory();
-        if (rc == ReturnStatus::failure) {
-            std::cerr << "Failed to allocate the memory required for the application" << std::endl;
-            return rc;
-        }
-        distribute_memory_for_receivers();
-        run_threads(m_receivers);
-        unregister_app_memory();
-    }
-    catch (const std::exception & error) {
-        std::cerr << error.what() << std::endl;
+#if defined(CUDA_ENABLED) && !defined(TEGRA_ENABLED)
+    if (m_app_settings->gpu_id != INVALID_GPU_ID && m_app_settings->packet_app_header_size == 0) {
+        std::cerr << "GPU Direct is supported only in header-data split mode!\n"
+                << "Please specify application header size with --app-hdr-size option" << std::endl;
         return ReturnStatus::failure;
     }
+#endif
 
     return ReturnStatus::success;
 }
 
-ReturnStatus IPOReceiverApp::initialize_rivermax_resources()
+void IPOReceiverApp::run_receiver_threads()
 {
-    rt_set_realtime_class();
-    return m_rmax_apps_lib.initialize_rivermax(m_app_settings->internal_thread_core);
+    run_threads(m_receivers);
 }
 
 void IPOReceiverApp::configure_network_flows()
@@ -188,14 +168,6 @@ void IPOReceiverApp::configure_network_flows()
     }
 }
 
-void IPOReceiverApp::distribute_work_for_threads()
-{
-    m_streams_per_thread.reserve(m_app_settings->num_of_threads);
-    for (int stream = 0; stream < m_app_settings->num_of_total_streams; stream++) {
-        m_streams_per_thread[stream % m_app_settings->num_of_threads]++;
-    }
-}
-
 void IPOReceiverApp::initialize_receive_io_nodes()
 {
     size_t streams_offset = 0;
@@ -218,49 +190,20 @@ void IPOReceiverApp::initialize_receive_io_nodes()
     }
 }
 
-bool IPOReceiverApp::allocate_and_align(size_t header_size, size_t payload_size, byte_t*& header, byte_t*& payload)
+ReturnStatus IPOReceiverApp::register_app_memory()
 {
-    header = payload = nullptr;
-    if (header_size) {
-        header = static_cast<byte_t*>(m_header_allocator->allocate_aligned(header_size, m_header_allocator->get_page_size()));
-    }
-    payload = static_cast<byte_t*>(m_payload_allocator->allocate_aligned(payload_size, m_payload_allocator->get_page_size()));
-    return payload && (header_size == 0 || header);
-}
-
-ReturnStatus IPOReceiverApp::allocate_app_memory()
-{
-    size_t hdr_mem_size;
-    size_t pld_mem_size;
-    ReturnStatus rc = get_total_ipo_streams_memory_size(hdr_mem_size, pld_mem_size);
-    if (rc != ReturnStatus::success) {
-        return rc;
-    }
-
-    bool alloc_successful = allocate_and_align(hdr_mem_size, pld_mem_size, m_header_buffer, m_payload_buffer);
-
-    if (alloc_successful) {
-        std::cout << "Allocated " << hdr_mem_size << " bytes for header"
-            << " at address " << static_cast<void*>(m_header_buffer)
-            << " and " <<  pld_mem_size << " bytes for payload"
-            << " at address " << static_cast<void*>(m_payload_buffer) << std::endl;
-    } else {
-        std::cerr << "Failed to allocate memory" << std::endl;
-        return ReturnStatus::failure;
-    }
-
     m_header_mem_regions.resize(m_num_paths_per_stream);
     m_payload_mem_regions.resize(m_num_paths_per_stream);
 
-    if (!m_register_memory) {
+    if (!m_app_settings->register_memory) {
         return ReturnStatus::success;
     }
 
     for (size_t i = 0; i < m_num_paths_per_stream; ++i) {
         m_header_mem_regions[i].addr = m_header_buffer;
-        m_header_mem_regions[i].length = hdr_mem_size;
+        m_header_mem_regions[i].length = m_header_mem_size;
         m_header_mem_regions[i].mkey = 0;
-        if (hdr_mem_size) {
+        if (m_header_mem_size) {
             rmx_mem_reg_params mem_registry;
             rmx_init_mem_registry(&mem_registry, &m_device_ifaces[i]);
             rmx_status status = rmx_register_memory(&m_header_mem_regions[i], &mem_registry);
@@ -274,7 +217,7 @@ ReturnStatus IPOReceiverApp::allocate_app_memory()
         rmx_mem_reg_params mem_registry;
         rmx_init_mem_registry(&mem_registry, &m_device_ifaces[i]);
         m_payload_mem_regions[i].addr = m_payload_buffer;
-        m_payload_mem_regions[i].length = pld_mem_size;
+        m_payload_mem_regions[i].length = m_payload_mem_size;
         rmx_status status = rmx_register_memory(&m_payload_mem_regions[i], &mem_registry);
         if (status != RMX_OK) {
             std::cerr << "Failed to register payload memory on device " << m_app_settings->local_ips[i] << " with status: " << status << std::endl;
@@ -287,7 +230,7 @@ ReturnStatus IPOReceiverApp::allocate_app_memory()
 
 void IPOReceiverApp::unregister_app_memory()
 {
-    if (!m_register_memory) {
+    if (!m_app_settings->register_memory) {
         return;
     }
 
@@ -307,7 +250,7 @@ void IPOReceiverApp::unregister_app_memory()
     }
 }
 
-ReturnStatus IPOReceiverApp::get_total_ipo_streams_memory_size(size_t& hdr_mem_size, size_t& pld_mem_size)
+ReturnStatus IPOReceiverApp::get_total_streams_memory_size(size_t& hdr_mem_size, size_t& pld_mem_size)
 {
     hdr_mem_size = 0;
     pld_mem_size = 0;
@@ -341,7 +284,7 @@ void IPOReceiverApp::distribute_memory_for_receivers()
             size_t hdr, pld;
 
             stream->set_buffers(hdr_ptr, pld_ptr);
-            if (m_register_memory) {
+            if (m_app_settings->register_memory) {
                 stream->set_memory_keys(m_header_mem_regions, m_payload_mem_regions);
             }
             stream->query_buffer_size(hdr, pld);
