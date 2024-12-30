@@ -45,5 +45,6 @@ rmx_api_demo_apps              # Root directory
 ├── rmx_api_base_demo_app.cpp  # Base demo application
 ├── rmx_api_base_demo_app.h    # Base demo application header
 ├── rmx_input_api              # Rivermax Input API demo applications
+├── rmx_output_generic_api     # Rivermax Output Generic API demo applications
 └── rmx_output_media_api       # Rivermax Output Media API demo applications
 ```
