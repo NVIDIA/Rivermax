@@ -21,5 +21,6 @@ rmx_api_demo_apps/rmx_input_api               # Rivermax Input API demo applicat
 ├── rmx_memory_allocation_receive_demo_app    # Rivermax Input API memory allocation receive demo application
 ├── rmx_memory_registration_receive_demo_app  # Rivermax Input API memory registration receive demo application
 ├── rmx_hds_receive_demo_app                  # Rivermax Input API header-data split receive demo application
-└── rmx_multi_source_receive_demo_app         # Rivermax Input API multi source receive demo application
+├── rmx_multi_source_receive_demo_app         # Rivermax Input API multi source receive demo application
+└── rmx_read_detached_flow_receive_demo_app   # Rivermax Input API receive-after-detach demo application
 ```
