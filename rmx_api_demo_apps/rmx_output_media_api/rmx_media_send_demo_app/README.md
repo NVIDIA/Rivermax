@@ -7,7 +7,7 @@ This application demonstrates the most basic way to send a media stream to the n
 ## Structure
 
 ```
-rmx_api_demo_apps/rmx_output_media_api/rmx_media_send_demo_app  # Rivermax Output Media API basic send demo application directory
+rmx_api_demo_apps/rmx_output_media_api/rmx_media_send_demo_app  # Application directory
 ├── CMakeLists.txt                                              # CMake build script
 ├── README.md                                                   # This file
 ├── rmx_media_send_demo_app.cpp                                 # Application source code

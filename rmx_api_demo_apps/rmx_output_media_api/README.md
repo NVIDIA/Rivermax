@@ -16,7 +16,7 @@ for sending media streams to the network.
 ```
 rmx_api_demo_apps/rmx_output_media_api  # Rivermax Output Media API demo applications directory
 ├── README.md                           # This file
-├── rmx_media_send_demo_app             # Rivermax Output Media API basic send demo application
 ├── rmx_output_media_api_base.cpp       # Rivermax Output Media API base class implementation
-└── rmx_output_media_api_base.h         # Rivermax Output Media API base class header
+├── rmx_output_media_api_base.h         # Rivermax Output Media API base class header
+└── rmx_media_send_demo_app             # Rivermax Output Media API basic send demo application
 ```

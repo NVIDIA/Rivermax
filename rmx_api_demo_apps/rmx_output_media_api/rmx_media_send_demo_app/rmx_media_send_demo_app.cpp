@@ -14,8 +14,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cstddef>
 #include <cinttypes>
-#include <cstring>
 #include <chrono>
 #include <vector>
 
@@ -36,7 +36,7 @@ using namespace ral::lib::services;
 
 ReturnStatus RmxMediaSendDemoApp::operator()()
 {
-    /* Settings initialization */
+    /* Initialize settings */
 
     /** Initialize app settings (@ref m_app_settings) **/
     // Done in @ref RmxOutMediaAPIBaseDemoApp::post_cli_parse_initialization, called from @ref RmxAPIBaseDemoApp::initialize.
@@ -48,9 +48,7 @@ ReturnStatus RmxMediaSendDemoApp::operator()()
     rmx_status status = rmx_init();
     EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library")
 
-    /* Create media stream */
-
-    /** Set memory blocks **/
+    /* Set memory layout */
     std::vector<rmx_output_media_mem_block> mem_blocks(m_app_settings->num_of_memory_blocks);
     rmx_output_media_init_mem_blocks(mem_blocks.data(), mem_blocks.size());
     constexpr size_t num_of_sub_blocks = 1; // Non-HDS mode
@@ -63,6 +61,8 @@ ReturnStatus RmxMediaSendDemoApp::operator()()
         rmx_output_media_set_chunk_count(&block, m_app_settings->num_of_chunks_in_mem_block);
         rmx_output_media_set_packet_layout(&block, sub_block_index, payload_sizes.data());
     }
+
+    /* Create media stream */
 
     /** Set stream parameters **/
     rmx_output_media_stream_params stream_params;
