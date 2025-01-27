@@ -51,12 +51,8 @@ void RmxInAPIBaseDemoApp::post_cli_parse_initialization()
     s->num_of_packets_in_mem_block = DEFAULT_INPUT_BUFFER_SIZE;
 
     // Set remote address:
-    m_destination_address.sin_family = AF_INET;
-    m_destination_address.sin_port = htons(m_app_settings->destination_port);
-    m_destination_address.sin_addr.s_addr = inet_addr(m_app_settings->destination_ip.c_str());
-    int rc = inet_pton(AF_INET, m_app_settings->destination_ip.c_str(), &m_destination_address.sin_addr);
-    if (rc <= 0) {
-        std::cerr << "Invalid destination IP address: " << m_app_settings->destination_ip << std::endl;
+    auto rc = initialize_address(s->destination_ip, s->destination_port, m_destination_address);
+    if (rc != ReturnStatus::success) {
         m_obj_init_status = ReturnStatus::obj_init_failure;
         return;
     }

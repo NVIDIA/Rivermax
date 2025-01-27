@@ -117,15 +117,19 @@ protected:
      * It will be called as part of the @ref RmxAPIBaseDemoApp::initialize process.
      */
     virtual void post_cli_parse_initialization(){};
-private:
     /**
-     * @brief Initializes the local NIC address.
+     * @brief Initializes socket address.
      *
-     * It will be called as part of the @ref RmxAPIBaseDemoApp::initialize process.
+     * This method initializes a socket address structure with the given IP and port.
      *
-     * @return Status of the operation.
+     * @param [in] ip: IP address string.
+     * @param [in] port: Port number.
+     * @param [out] address: Socket address structure to initialize.
+     *
+     * @return Status of the operation, on success: @ref ral::lib:services::ReturnStatus::success.
      */
-    ReturnStatus initialize_local_address();
+    static ReturnStatus initialize_address(const std::string& ip, uint16_t port, sockaddr_in& address);
+private:
     /**
      * @brief Runs application initialization flow.
      *

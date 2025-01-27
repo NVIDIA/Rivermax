@@ -78,14 +78,14 @@ void RmxAPIBaseDemoApp::initialize_common_default_app_settings()
     m_app_settings->destination_port = DESTINATION_PORT_DEFAULT;
 }
 
-ReturnStatus RmxAPIBaseDemoApp::initialize_local_address()
+ReturnStatus RmxAPIBaseDemoApp::initialize_address(const std::string& ip, uint16_t port, sockaddr_in& address)
 {
-    std::memset(&m_local_address, 0, sizeof(sockaddr_in));
-    m_local_address.sin_family = AF_INET;
-    m_local_address.sin_port = htons(LOCAL_PORT_DEFAULT);
-    int rc = inet_pton(AF_INET, m_app_settings->local_ip.c_str(), &m_local_address.sin_addr);
+    std::memset(&address, 0, sizeof(sockaddr_in));
+    address.sin_family = AF_INET;
+    address.sin_port = htons(port);
+    int rc = inet_pton(AF_INET, ip.c_str(), &address.sin_addr);
     if (rc != 1) {
-        std::cerr << "Failed to convert local IP address" << std::endl;
+        std::cerr << "Failed to convert IP address: " << ip << std::endl;
         return ReturnStatus::failure;
     }
 
@@ -111,7 +111,7 @@ ReturnStatus RmxAPIBaseDemoApp::initialize(int argc, const char* argv[])
     }
     post_cli_parse_initialization();
 
-    rc = initialize_local_address();
+    rc = initialize_address(m_app_settings->local_ip, LOCAL_PORT_DEFAULT, m_local_address);
     if (rc == ReturnStatus::failure) {
         std::cerr << "Failed to initialize NIC local address" << std::endl;
         return ReturnStatus::obj_init_failure;
