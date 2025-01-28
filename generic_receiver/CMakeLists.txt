@@ -37,6 +37,7 @@ target_include_directories(generic_receiver PRIVATE
 target_sources(generic_receiver
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/generic_receiver.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/checksum_verifier.cpp
         ${UTILS_SOURCE_DIR}/memory_allocator.cpp
 )
 

@@ -30,6 +30,8 @@
 #pragma comment(lib, "Ws2_32.lib")
 #endif
 #include "generic_receiver.h"
+#include "checksum_verifier.h"
+
 
 RxStream::RxStream(rmx_input_stream_params_type rx_type
                  , rmx_input_timestamp_format timestamp_format
@@ -73,6 +75,16 @@ RxStream::RxStream(rmx_input_stream_params_type rx_type
         m_mem_payload_utils = m_mem_payload_allocator->get_memory_utils();
         m_mem_hdr_allocator.reset(new HugePagesMemoryAllocator());
         m_mem_hdr_utils = m_mem_hdr_allocator->get_memory_utils();
+
+        if (m_use_checksum_header) {
+            if (m_gpu == GPU_ID_INVALID) {
+                m_checksum_verifier =
+                    std::make_unique<CPUChecksumVerifier>(m_mem_payload_allocator);
+            } else {
+                m_checksum_verifier = std::make_unique<GPUChecksumVerifier>(
+                    m_max_chunk_size, m_mem_payload_allocator);
+            }
+        }
 }
 
 RxStream::~RxStream()
@@ -119,13 +131,6 @@ bool RxStream::allocate_memory()
 
     // Allocate the payload buffer.
     void* payload_ptr = allocate_buffer(m_mem_payload_allocator, m_mem_payload_utils, payload_length, alignment, allow_fallback);
-    if (m_gpu != GPU_ID_INVALID) {
-        m_statistics.gpu_checksum_mismatch = gpu_allocate_counter();
-        if (!m_statistics.gpu_checksum_mismatch) {
-            std::cerr << "Failed to allocate GPU counter." << std::endl;
-            return false;
-        }
-    }
     if (!payload_ptr) {
         std::cerr << "Failed to allocate payload memory." << std::endl;
         return false;
@@ -170,10 +175,7 @@ bool RxStream::create_stream()
     }
 
     // Completion moderation config. Not configurable at the moment
-    constexpr size_t min_chunk_size = 0;
-    constexpr size_t max_chunk_size = 5000;
-    constexpr int timeout_next_chunk = 0;
-    status = rmx_input_set_completion_moderation(m_stream_id, min_chunk_size, max_chunk_size, timeout_next_chunk);
+    status = rmx_input_set_completion_moderation(m_stream_id, m_min_chunk_size, m_max_chunk_size, m_timeout_next_chunk);
 
     if (status != RMX_OK) {
         std::cerr << "Failed to set expected packets count for stream: " << m_stream_id << ", with status: "
@@ -250,7 +252,7 @@ bool RxStream::init_wait()
     return true;
 }
 
-void* RxStream::allocate_buffer(std::unique_ptr<MemoryAllocator> &mem_allocator, std::shared_ptr<MemoryUtils> &mem_utils,
+void* RxStream::allocate_buffer(std::shared_ptr<MemoryAllocator> &mem_allocator, std::shared_ptr<MemoryUtils> &mem_utils,
         size_t buffer_len, size_t align, bool allow_fallback)
 {
     void* ptr_mem = mem_allocator->allocate(buffer_len);
@@ -353,6 +355,14 @@ bool RxStream::stream_initialize()
         return status;
     }
 
+    if (m_checksum_verifier) {
+        status = m_checksum_verifier->initialize();
+        if (!status) {
+            std::cerr << "Failed to initialize checksum verifier. " << std::endl;
+            return false;
+        }
+    }
+
     // Create the Rivermax stream.
     status = create_stream();
     if (!status || !is_initialized()) {
@@ -426,8 +436,8 @@ void RxStream::process_packets(const rmx_input_completion *comp)
         header_ptr = reinterpret_cast<const uint8_t*>(rmx_input_get_completion_ptr(comp, m_header_mem_block_id));
     }
 
-    const size_t chunk_size = rmx_input_get_completion_chunk_size(comp);
-    for (size_t packet_index = 0; packet_index < chunk_size; ++packet_index) {
+    const size_t packet_count = rmx_input_get_completion_chunk_size(comp);
+    for (size_t packet_index = 0; packet_index < packet_count; ++packet_index) {
         const rmx_input_packet_info* packet_info = rmx_input_get_packet_info(&m_chunk_handle, packet_index);
         const size_t payload_size = rmx_input_get_packet_size(packet_info, m_payload_mem_block_id);
         const uint8_t* data = data_ptr;
@@ -445,18 +455,12 @@ void RxStream::process_packets(const rmx_input_completion *comp)
         m_statistics.received_bytes += payload_size;
         m_statistics.received_bytes += header_size;
 
-        if (m_use_checksum_header) {
+        if (m_checksum_verifier) {
             ChecksumHeader *hdr = (ChecksumHeader*)header_ptr;
-
             check_packets_drop(ntohl(hdr->sequence));
 
-            // Calculate and compare the packet checksum.
-            uint32_t checksum = ntohl(hdr->checksum);
-            if (m_gpu == GPU_ID_INVALID) {
-                host_compare_checksum(checksum, data, payload_size);
-            } else {
-                gpu_compare_checksum(checksum, const_cast<uint8_t*>(data), payload_size, m_statistics.gpu_checksum_mismatch);
-            }
+            const uint32_t checksum = ntohl(hdr->checksum);
+            m_checksum_verifier->add_packet(data, payload_size, checksum);
         }
 
         // Increment source data pointers
@@ -465,13 +469,17 @@ void RxStream::process_packets(const rmx_input_completion *comp)
             header_ptr += m_header_stride_size;
         }
     }
+
+    if (m_checksum_verifier) {
+        m_checksum_verifier->complete_batch();
+    }
 }
 
-void RxStream::host_compare_checksum(uint32_t expected, const uint8_t *data, size_t size)
+void RxStream::host_compare_checksum(uint32_t expected, const uint8_t* data, size_t size)
 {
     uint32_t checksum = 0;
     for (size_t i = 0; i < size; i++) {
-        checksum += (unsigned char)data[i];
+        checksum += data[i];
     }
     if (checksum != expected) {
         m_statistics.checksum_mismatch++;
@@ -496,10 +504,8 @@ void RxStream::update_statistics(high_resolution_clock::time_point& start_time)
         }
         std::cout << std::setw(4) << ((double)diff.count() / 1.e6) << " sec";
 
-        if (m_use_checksum_header) {
-            if (m_gpu != GPU_ID_INVALID) {
-                m_statistics.checksum_mismatch = gpu_read_counter(m_statistics.gpu_checksum_mismatch);
-            }
+        if (m_checksum_verifier) {
+            m_statistics.checksum_mismatch = m_checksum_verifier->get_and_reset_mismatch_count();
             std::cout << " | " << m_statistics.dropped_packets << " dropped packets"
                         << " | " << m_statistics.checksum_mismatch << " checksum errors";
         }
@@ -542,16 +548,6 @@ bool run(const GenericReceiverArgs& args)
         return false;
     }
 
-    bool status = false;
-
-    if (args.gpu != GPU_ID_INVALID) {
-
-        status = gpu_init(args.gpu);
-        if (!status) {
-            return false;
-        }
-    }
-
     // If special checksum header is needed, set specific header size for it.
     uint16_t expected_header_size = args.header_size;
     if (args.use_checksum_header) {
@@ -568,7 +564,7 @@ bool run(const GenericReceiverArgs& args)
         return false;
     }
 
-    status = p_stream->stream_initialize();
+    bool status = p_stream->stream_initialize();
     if (!status) {
         std::cerr << "Failed initializing stream." << std::endl;
         return false;
@@ -661,6 +657,15 @@ int main(int argc, char *argv[])
 
     // Initializes signals caught by the application
     initialize_signals();
+
+    // Initializes and validates requested GPU
+    if (args.gpu != GPU_ID_INVALID) {
+        const bool status = gpu_init(args.gpu);
+        if (!status) {
+            std::cerr << "Failed to initialize GPU with id " << args.gpu << std::endl;
+            exit(EXIT_FAILURE);
+        }
+    }
 
     // Initialize Rivermax library.
     rmx_status rmax_status = rmx_enable_system_signal_handling();

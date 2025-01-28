@@ -26,6 +26,8 @@ using std::chrono::milliseconds;
 using std::chrono::microseconds;
 using std::chrono::nanoseconds;
 
+class ChecksumVerifier;
+
 struct Statistics {
     uint64_t received_packets = 0;
     uint64_t received_bytes = 0;
@@ -33,30 +35,23 @@ struct Statistics {
     uint32_t dropped_packets = 0;
     uint32_t checksum_mismatch = 0;
 
-    /* GPU-allocated counter for checksum mismatches. */
-    uint32_t *gpu_checksum_mismatch = nullptr;
-
     void reset()
     {
         received_packets = 0;
         received_bytes = 0;
         dropped_packets = 0;
         checksum_mismatch = 0;
-
-        if (gpu_checksum_mismatch) {
-            gpu_reset_counter(gpu_checksum_mismatch);
-        }
     }
 
     double received_mbits()
     {
-        return ((received_bytes * 8) / 1.e6);
+        return (static_cast<double>(received_bytes * 8) / 1.e6);
     }
 };
 
-class RxStream {
+class RxStream
+{
 public:
-
     /**
      * @param buffer_elements The number of elements (packets) to allocate in the stream.
      * @param payload_size The size of each payload, in bytes.
@@ -65,16 +60,10 @@ public:
      * @param addr The network address on which this stream will be receiving data.
      * @param gpu The GPU to use for GPUDirect (-1 == don't use GPU).
      */
-    RxStream(rmx_input_stream_params_type rx_type
-            , rmx_input_timestamp_format timestamp_format
-            , uint32_t buffer_elements
-            , uint16_t payload_size
-            , uint16_t header_size
-            , const sockaddr_in &addr
-            , int gpu
-            , bool wait_for_event
-            , bool use_checksum_header
-            , const std::vector<int>& cpu_affinity);
+    RxStream(rmx_input_stream_params_type rx_type, rmx_input_timestamp_format timestamp_format,
+             uint32_t buffer_elements, uint16_t payload_size, uint16_t header_size,
+             const sockaddr_in& addr, int gpu, bool wait_for_event, bool use_checksum_header,
+             const std::vector<int>& cpu_affinity);
 
     virtual ~RxStream();
 
@@ -122,7 +111,8 @@ public:
     /**
      * Attach a flow to the stream.
      */
-    bool attach_flow(const sockaddr_in& destination_address, const sockaddr_in& remote_address, uint32_t flow_tag);
+    bool attach_flow(const sockaddr_in& destination_address, const sockaddr_in& remote_address,
+                     uint32_t flow_tag);
 
     /**
      * Detach the flow from the stream.
@@ -134,13 +124,14 @@ public:
      */
     bool init_wait();
 
-    void* allocate_buffer(std::unique_ptr<MemoryAllocator> &mem_allocator, std::shared_ptr<MemoryUtils> &mem_utils,
-        size_t buffer_len, size_t align, bool allow_fallback);
+    void* allocate_buffer(std::shared_ptr<MemoryAllocator>& mem_allocator,
+                          std::shared_ptr<MemoryUtils>& mem_utils, size_t buffer_len, size_t align,
+                          bool allow_fallback);
 
     /**
      * Gets the next sequence of packets from the stream.
      */
-    virtual rmx_status get_next_chunk(const rmx_input_completion *&comp);
+    virtual rmx_status get_next_chunk(const rmx_input_completion*& comp);
 
     /**
      * Configures desired stream parameters
@@ -167,12 +158,12 @@ public:
     /**
      * Process the packets in a received chunk.
      */
-    void process_packets(const rmx_input_completion *comp);
+    void process_packets(const rmx_input_completion* comp);
 
     /**
      * Calculate and compare the checksum for the data.
      */
-    void host_compare_checksum(uint32_t expected, const uint8_t *data, size_t size);
+    void host_compare_checksum(uint32_t expected, const uint8_t* data, size_t size);
 
     /**
      * Updates the receive statistics.
@@ -180,7 +171,6 @@ public:
     virtual void update_statistics(high_resolution_clock::time_point& start_time);
 
 protected:
-
     // Used to detect if we have a valid stream
     static const rmx_stream_id INVALID_STREAM_ID = static_cast<rmx_stream_id>(-1L);
 
@@ -236,10 +226,10 @@ protected:
     int m_gpu;
 
     // Allocator used for header memory
-    std::unique_ptr<MemoryAllocator> m_mem_hdr_allocator;
+    std::shared_ptr<MemoryAllocator> m_mem_hdr_allocator;
 
     // Allocator used for payload memory
-    std::unique_ptr<MemoryAllocator> m_mem_payload_allocator;
+    std::shared_ptr<MemoryAllocator> m_mem_payload_allocator;
 
     // Utilities to interact with header memory
     std::shared_ptr<MemoryUtils> m_mem_hdr_utils;
@@ -247,8 +237,12 @@ protected:
     // Utilities to interact with payload memory
     std::shared_ptr<MemoryUtils> m_mem_payload_utils;
 
-private:
+    // Completion moderation parameters
+    static constexpr size_t m_min_chunk_size = 0;
+    static constexpr size_t m_max_chunk_size = 5000;
+    static constexpr int m_timeout_next_chunk = 0;
 
+private:
     // Memory region used for headers
     rmx_mem_region* m_header_memory = nullptr;
 
@@ -276,6 +270,9 @@ private:
 
     // Desired timestamp format for incoming packets
     rmx_input_timestamp_format m_timestamp_format;
+
+    // Verifier instance responsible to validate packet integrity
+    std::unique_ptr<ChecksumVerifier> m_checksum_verifier;
 
     /**
      * Initialize stream specific event channel.
