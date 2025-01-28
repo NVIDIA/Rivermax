@@ -15,6 +15,8 @@
  * limitations under the License.
  */
 
-// Calculates the checksum of a data packet and compares it to an expected checksum.
-extern "C" void cuda_compare_checksum(unsigned int expected, unsigned char* data,
-                                      unsigned int size, unsigned int* mismatches);
+// Calculates the checksum of a number of data packets and compares it to a set of expected
+// checksums.
+extern "C" void cuda_compare_checksum(const uint8_t** data_ptrs, const size_t* sizes,
+                                      const uint32_t* expected_checksums,
+                                      uint32_t* mismatch_counter, uint32_t num_packet);

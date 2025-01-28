@@ -53,7 +53,9 @@ void* gpu_allocate_memory(int gpu_id, size_t size, size_t align);
 bool gpu_free_memory(void* ptr, size_t size);
 bool gpu_memset(void* dst, int value, size_t count);
 bool gpu_memcpy(void* dst, const void* src, size_t count);
-void gpu_compare_checksum(uint32_t expected, unsigned char* data, size_t size, uint32_t* mismatches);
+void gpu_compare_checksum(const uint8_t** data_ptrs, const size_t* sizes,
+                          const uint32_t* expected_checksums, uint32_t* mismatch_counter,
+                          uint32_t num_packet);
 bool set_gpu_device(int gpu_id);
 #ifndef TEGRA_ENABLED
 int gpu_set_locked_clocks_max_freq(int gpu_id);
@@ -188,12 +190,15 @@ static inline bool verify_gpu_device_id(int gpu)
     return true;
 }
 
-static inline void gpu_compare_checksum(uint32_t expected, unsigned char* data, size_t size, uint32_t* mismatches)
+static inline void gpu_compare_checksum(const uint8_t** data_ptrs, const size_t* sizes,
+                                        const uint32_t* expected_checksums,
+                                        uint32_t* mismatch_counter, uint32_t num_packet)
 {
-    NOT_IN_USE(expected);
-    NOT_IN_USE(data);
-    NOT_IN_USE(size);
-    NOT_IN_USE(mismatches);
+    NOT_IN_USE(data_ptrs);
+    NOT_IN_USE(sizes);
+    NOT_IN_USE(expected_checksums);
+    NOT_IN_USE(mismatch_counter);
+    NOT_IN_USE(num_packet);
 }
 
 static inline bool set_gpu_device(int gpu_id)

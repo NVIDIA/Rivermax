@@ -21,6 +21,7 @@
 #include <vector>
 #include <memory>
 #include <mutex>
+#include <cstring>
 
 typedef uint8_t byte_t;
 

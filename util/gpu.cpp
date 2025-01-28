@@ -26,10 +26,8 @@
 #include "defs.h"
 #include "rt_threads.h"
 #include "gpu.h"
+#include "checksum_kernel.h"
 
-extern "C"
-void cuda_compare_checksum(unsigned int expected, unsigned char* data,
-    unsigned int size, unsigned int* mismatches);
 
 /**
  * @brief: Initialize GPU.
@@ -77,9 +75,11 @@ bool gpu_uninit(int gpu_id)
     return true;
 }
 
-void gpu_compare_checksum(uint32_t expected, unsigned char* data, size_t size, uint32_t* mismatches)
+void gpu_compare_checksum(const uint8_t** data_ptrs, const size_t* sizes,
+                          const uint32_t* expected_checksums, uint32_t* mismatch_counter,
+                          uint32_t num_packet)
 {
-    cuda_compare_checksum(expected, data, (uint32_t)size, mismatches);
+    cuda_compare_checksum(data_ptrs, sizes, expected_checksums, mismatch_counter, num_packet);
 }
 
 uint32_t* gpu_allocate_counter()
@@ -99,7 +99,8 @@ uint32_t gpu_read_counter(uint32_t *counter)
 
 void gpu_reset_counter(uint32_t *counter)
 {
-    cudaMemset(counter, 0, sizeof(uint32_t));
+    unsigned int zero = 0;
+    cudaMemcpy(counter, &zero, sizeof(uint32_t), cudaMemcpyHostToDevice);
 }
 
 /**
@@ -424,7 +425,8 @@ bool verify_gpu_device_id(int device_id)
             std::cout << "ERROR: User set the GPU id as = " << device_id << " but maximum allowed GPU id is " << count - 1 << std::endl;
             return false;
         }
-        std::cout << "gpu_device_id = " << device_id << std::endl;
+        const std::string gpu_name = get_gpu_device_name(device_id);
+        std::cout << "Using GPU: " << gpu_name << " with id = " << device_id << std::endl;
     }
     return true;
 }

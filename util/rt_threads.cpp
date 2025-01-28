@@ -305,9 +305,14 @@ int rt_set_realtime_class(void)
 
 uint16_t get_cache_line_size(void)
 {
-    uint16_t size = (uint16_t)sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+    long size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
+    if (-1 == size) {
+        cerr << "Warning - Failed retrieving cache line, using default " <<
+                DEFAULT_CACHE_LINE_SIZE << endl;
+        size = DEFAULT_CACHE_LINE_SIZE;
+    }
 
-    return size;
+    return static_cast<uint16_t>(size);
 }
 
 uint16_t get_page_size(void)

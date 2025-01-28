@@ -102,7 +102,7 @@ if (CMAKE_CUDA_COMPILER)
     )
     target_include_directories(app_cuda_integration
         PUBLIC
-            ${PROJECT_SOURCE_DIR}/cuda
+            ${UTILS_SOURCE_DIR}/cuda
             ${Rivermax_INCLUDE_DIR}
     )
     target_compile_options(app_cuda_integration PUBLIC -DCUDA_ENABLED)
