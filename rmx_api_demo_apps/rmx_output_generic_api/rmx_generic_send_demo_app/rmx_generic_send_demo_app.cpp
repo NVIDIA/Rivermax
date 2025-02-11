@@ -45,7 +45,7 @@ ReturnStatus RmxGenericSendDemoApp::operator()()
 
     /* Initialize Rivermax library */
     rmx_status status = rmx_init();
-    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library");
 
     /* Allocate memory */
     auto mem_allocator = m_rmax_apps_lib.get_memory_allocator(AllocatorType::Malloc, m_app_settings);
@@ -56,16 +56,16 @@ ReturnStatus RmxGenericSendDemoApp::operator()()
         m_app_settings->num_of_packets_in_chunk * m_app_settings->packet_payload_size;
 
     void* allocated_mem_ptr = mem_allocator->allocate_aligned(total_size_in_bytes, mem_alignment);
-    EXIT_ON_CONDITION_WITH_CLEANUP(allocated_mem_ptr == nullptr, "Failed to allocate memory")
+    EXIT_ON_CONDITION_WITH_CLEANUP(allocated_mem_ptr == nullptr, "Failed to allocate memory");
     auto rc = mem_utils->memory_set(allocated_mem_ptr, 0, total_size_in_bytes);
-    EXIT_ON_CONDITION_WITH_CLEANUP(rc != ReturnStatus::success, "Failed to set memory")
+    EXIT_ON_CONDITION_WITH_CLEANUP(rc != ReturnStatus::success, "Failed to set memory");
 
     /* Register memory */
 
     /** Retrieve device interface **/
     rmx_device_iface device_interface;
     status = rmx_retrieve_device_iface_ipv4(&device_interface, &m_local_address.sin_addr);
-    EXIT_ON_FAILURE(status, "Failed to get device")
+    EXIT_ON_FAILURE(status, "Failed to get device");
 
     /** Initialize memory region **/
     rmx_mem_region app_mem_region;
@@ -78,7 +78,7 @@ ReturnStatus RmxGenericSendDemoApp::operator()()
 
     /** Register the memory **/
     status = rmx_register_memory(&app_mem_region, &mem_reg_params);
-    EXIT_ON_FAILURE(status, "Failed to register application memory")
+    EXIT_ON_FAILURE(status, "Failed to register application memory");
     rmx_mkey_id mkey = app_mem_region.mkey;
 
     /* Set memory layout */
@@ -109,7 +109,7 @@ ReturnStatus RmxGenericSendDemoApp::operator()()
     /** Create the stream **/
     rmx_stream_id stream_id;
     status = rmx_output_gen_create_stream(&stream_params, &stream_id);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream");
 
     /* Initialize chunk handle */
     rmx_output_gen_chunk_handle chunk_handle;
@@ -127,7 +127,7 @@ ReturnStatus RmxGenericSendDemoApp::operator()()
             do {
                 status = rmx_output_gen_get_next_chunk(&chunk_handle);
             } while (unlikely(status == RMX_NO_FREE_CHUNK));
-            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk")
+            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk");
 
             /** Prepare chunk's data **/
             for (auto& packet : chunk) {
@@ -142,14 +142,14 @@ ReturnStatus RmxGenericSendDemoApp::operator()()
                 NOT_IN_USE(payload_ptr);
 
                 status = rmx_output_gen_append_packet_to_chunk(&chunk_handle, &packet, 1);
-                EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to append packet to chunk")
+                EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to append packet to chunk");
             }
 
             /** Commit the chunk ***/
             do {
                 status = rmx_output_gen_commit_chunk(&chunk_handle, commit_timestamp_ns);
             } while (unlikely(status == RMX_HW_SEND_QUEUE_IS_FULL));
-            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to commit chunk")
+            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to commit chunk");
         }
     }
 
@@ -157,15 +157,15 @@ ReturnStatus RmxGenericSendDemoApp::operator()()
     do {
         status = rmx_output_gen_destroy_stream(stream_id);
     } while (status == RMX_BUSY);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream");
 
     /* Deregister memory */
     status = rmx_deregister_memory(&app_mem_region, &device_interface);
-    EXIT_ON_FAILURE(status, "Failed to deregister application memory")
+    EXIT_ON_FAILURE(status, "Failed to deregister application memory");
 
     /* Clean-up Rivermax library */
     status = rmx_cleanup();
-    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library");
 
     return ReturnStatus::success;
 }

@@ -35,13 +35,15 @@ using namespace ral::lib::services;
 
 
 #define EXIT_ON_CONDITION_HELPER(condition, message, do_cleanup) \
-    if (unlikely(condition)) {                                   \
-        std::cerr << message << std::endl;                       \
-        if (do_cleanup) {                                        \
-            rmx_cleanup();                                       \
+    do {                                                         \
+        if (unlikely(condition)) {                               \
+            std::cerr << message << std::endl;                   \
+            if (do_cleanup) {                                    \
+                rmx_cleanup();                                   \
+            }                                                    \
+            return ReturnStatus::failure;                        \
         }                                                        \
-        return ReturnStatus::failure;                            \
-    }
+    } while (0)
 #define EXIT_ON_CONDITION(condition, message) EXIT_ON_CONDITION_HELPER(condition, message, false)
 #define EXIT_ON_CONDITION_WITH_CLEANUP(condition, message) EXIT_ON_CONDITION_HELPER(condition, message, true)
 #define EXIT_ON_FAILURE(status, message) EXIT_ON_CONDITION(                            \

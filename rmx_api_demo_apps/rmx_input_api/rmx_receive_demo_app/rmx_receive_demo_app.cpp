@@ -45,7 +45,7 @@ ReturnStatus RmxReceiveDemoApp::operator()()
 
     /* Initialize Rivermax library */
     rmx_status status = rmx_init();
-    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library");
 
     /* Create stream */
 
@@ -65,14 +65,14 @@ ReturnStatus RmxReceiveDemoApp::operator()()
     rmx_input_set_entry_uniform_size(&stream_params, sub_block_id, m_app_settings->packet_payload_size);
 
     status = rmx_input_determine_mem_layout(&stream_params);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to determine memory layout")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to determine memory layout");
 
     size_t data_stride_size_bytes = rmx_input_get_stride_size(&stream_params, sub_block_id);
 
     /** Create the stream **/
     rmx_stream_id stream_id;
     status = rmx_input_create_stream(&stream_params, &stream_id);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream");
 
     /**
      * Set completion moderation
@@ -86,7 +86,7 @@ ReturnStatus RmxReceiveDemoApp::operator()()
     constexpr int wait_timeout_next_chunk = 0;
 
     status = rmx_input_set_completion_moderation(stream_id, min_chunk_size, max_chunk_size, wait_timeout_next_chunk);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to set completion moderation")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to set completion moderation");
 
     /* Attach network flow */
 
@@ -98,7 +98,7 @@ ReturnStatus RmxReceiveDemoApp::operator()()
 
     /** Attach the flow **/
     status = rmx_input_attach_flow(stream_id, &receive_flow);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to attach flow")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to attach flow");
 
     /* Initialize chunk handle */
     rmx_input_chunk_handle chunk_handle;
@@ -117,11 +117,11 @@ ReturnStatus RmxReceiveDemoApp::operator()()
     while (likely(status == RMX_OK && SignalHandler::get_received_signal() < 0)) {
         /** Get next chunk of received data **/
         status = rmx_input_get_next_chunk(&chunk_handle);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk");
 
         /** Process the chunk **/
         const rmx_input_completion* completion = rmx_input_get_chunk_completion(&chunk_handle);
-        EXIT_ON_CONDITION_WITH_CLEANUP(completion == nullptr, "Failed to get chunk completion")
+        EXIT_ON_CONDITION_WITH_CLEANUP(completion == nullptr, "Failed to get chunk completion");
 
         const uint8_t* chunk_ptr = reinterpret_cast<const uint8_t*>(rmx_input_get_completion_ptr(completion, sub_block_id));
         size_t chunk_size = rmx_input_get_completion_chunk_size(completion);
@@ -145,15 +145,15 @@ ReturnStatus RmxReceiveDemoApp::operator()()
 
     /* Detach network flow */
     status = rmx_input_detach_flow(stream_id, &receive_flow);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to detach flow")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to detach flow");
 
     /* Destroy stream */
     status = rmx_input_destroy_stream(stream_id);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream");
 
     /* Clean-up Rivermax library */
     status = rmx_cleanup();
-    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library");
 
     return ReturnStatus::success;
 }

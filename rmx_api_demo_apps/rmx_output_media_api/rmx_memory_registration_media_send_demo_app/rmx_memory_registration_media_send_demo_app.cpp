@@ -46,7 +46,7 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
 
     /* Initialize Rivermax library */
     rmx_status status = rmx_init();
-    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library");
 
     constexpr size_t num_of_streams = 2;
 
@@ -61,9 +61,9 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
     size_t total_size_in_bytes = num_of_streams * m_app_settings->num_of_memory_blocks * stream_block_memory_size;
 
     void* allocated_mem_ptr = mem_allocator->allocate_aligned(total_size_in_bytes, mem_alignment);
-    EXIT_ON_CONDITION_WITH_CLEANUP(allocated_mem_ptr == nullptr, "Failed to allocate memory")
+    EXIT_ON_CONDITION_WITH_CLEANUP(allocated_mem_ptr == nullptr, "Failed to allocate memory");
     auto rc = mem_utils->memory_set(allocated_mem_ptr, 0, total_size_in_bytes);
-    EXIT_ON_CONDITION_WITH_CLEANUP(rc != ReturnStatus::success, "Failed to set memory")
+    EXIT_ON_CONDITION_WITH_CLEANUP(rc != ReturnStatus::success, "Failed to set memory");
 
     /* Set memory layout */
     std::vector<std::vector<rmx_output_media_mem_block>> streams_blocks(num_of_streams);
@@ -89,7 +89,7 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
     /** Retrieve device interface **/
     rmx_device_iface device_interface;
     status = rmx_retrieve_device_iface_ipv4(&device_interface, &m_local_address.sin_addr);
-    EXIT_ON_FAILURE(status, "Failed to get device")
+    EXIT_ON_FAILURE(status, "Failed to get device");
 
     /** Initialize memory region **/
     rmx_mem_region app_mem_region;
@@ -102,7 +102,7 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
 
     /** Register the memory **/
     status = rmx_register_memory(&app_mem_region, &mem_reg_params);
-    EXIT_ON_FAILURE(status, "Failed to register application memory")
+    EXIT_ON_FAILURE(status, "Failed to register application memory");
     rmx_mkey_id mkey = app_mem_region.mkey;
 
     rmx_mem_region* stream_mem_region;
@@ -115,7 +115,7 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
         /* Set memory region */
         for (auto& block : streams_blocks[index]) {
             stream_mem_region = rmx_output_media_get_sub_block(&block, sub_block_id);
-            EXIT_ON_CONDITION(stream_mem_region == nullptr, "Failed to get memory block")
+            EXIT_ON_CONDITION(stream_mem_region == nullptr, "Failed to get memory block");
             stream_mem_region->addr = app_mem_block;
             stream_mem_region->length = stream_block_memory_size;
             stream_mem_region->mkey = mkey;
@@ -135,7 +135,7 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
 
         /** Create the stream **/
         status = rmx_output_media_create_stream(&streams_params[index], &streams_id[index]);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream");
     }
 
     /**
@@ -183,7 +183,7 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
                 do {
                     status = rmx_output_media_get_next_chunk(&chunk_handle);
                 } while (unlikely(status == RMX_NO_FREE_CHUNK));
-                EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk")
+                EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk");
 
                 /*** Prepare chunk's data ***/
                 payload_sizes_ptr = rmx_output_media_get_chunk_packet_sizes(&chunk_handle, sub_block_index);
@@ -202,7 +202,7 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
                 do {
                     status = rmx_output_media_commit_chunk(&chunk_handle, commit_timestamp_ns);
                 } while (unlikely(status == RMX_HW_SEND_QUEUE_IS_FULL));
-                EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to commit chunk")
+                EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to commit chunk");
             }
 
         } while (likely(status == RMX_OK && ++chunk_in_frame_counter < m_app_settings->media.chunks_in_frame_field));
@@ -214,16 +214,16 @@ ReturnStatus RmxMemoryRegistrationMediaSendDemoApp::operator()()
         do {
             status = rmx_output_media_destroy_stream(stream_id);
         } while (status == RMX_BUSY);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream");
     }
 
     /* Deregister memory */
     status = rmx_deregister_memory(&app_mem_region, &device_interface);
-    EXIT_ON_FAILURE(status, "Failed to deregister application memory")
+    EXIT_ON_FAILURE(status, "Failed to deregister application memory");
 
     /* Clean-up Rivermax library */
     status = rmx_cleanup();
-    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library");
 
     return ReturnStatus::success;
 }

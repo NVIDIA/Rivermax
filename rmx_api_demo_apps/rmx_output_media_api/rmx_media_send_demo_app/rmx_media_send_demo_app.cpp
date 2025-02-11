@@ -46,7 +46,7 @@ ReturnStatus RmxMediaSendDemoApp::operator()()
 
     /* Initialize Rivermax library */
     rmx_status status = rmx_init();
-    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library");
 
     /* Set memory layout */
     std::vector<rmx_output_media_mem_block> mem_blocks(m_app_settings->num_of_memory_blocks);
@@ -81,7 +81,7 @@ ReturnStatus RmxMediaSendDemoApp::operator()()
     /** Create the stream **/
     rmx_stream_id stream_id;
     status = rmx_output_media_create_stream(&stream_params, &stream_id);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream");
 
     /**
      * Set commit start time
@@ -125,7 +125,7 @@ ReturnStatus RmxMediaSendDemoApp::operator()()
             do {
                 status = rmx_output_media_get_next_chunk(&chunk_handle);
             } while (unlikely(status == RMX_NO_FREE_CHUNK));
-            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk")
+            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk");
 
             /*** Prepare chunk's data ***/
             payload_sizes_ptr = rmx_output_media_get_chunk_packet_sizes(&chunk_handle, sub_block_index);
@@ -144,7 +144,7 @@ ReturnStatus RmxMediaSendDemoApp::operator()()
             do {
                 status = rmx_output_media_commit_chunk(&chunk_handle, commit_timestamp_ns);
             } while (unlikely(status == RMX_HW_SEND_QUEUE_IS_FULL));
-            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to commit chunk")
+            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to commit chunk");
 
         } while (likely(status == RMX_OK && ++chunk_in_frame_counter < m_app_settings->media.chunks_in_frame_field));
         sent_mem_block_counter++;
@@ -154,11 +154,11 @@ ReturnStatus RmxMediaSendDemoApp::operator()()
     do {
         status = rmx_output_media_destroy_stream(stream_id);
     } while (status == RMX_BUSY);
-    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream")
+    EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream");
 
     /* Clean-up Rivermax library */
     status = rmx_cleanup();
-    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library");
 
     return ReturnStatus::success;
 }

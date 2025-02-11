@@ -46,7 +46,7 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
 
     /* Initialize Rivermax library */
     rmx_status status = rmx_init();
-    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library");
 
     constexpr size_t num_of_streams = 2;
 
@@ -59,16 +59,16 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
         m_app_settings->packet_payload_size;
 
     void* allocated_mem_ptr = mem_allocator->allocate_aligned(total_size_in_bytes, mem_alignment);
-    EXIT_ON_CONDITION_WITH_CLEANUP(allocated_mem_ptr == nullptr, "Failed to allocate memory")
+    EXIT_ON_CONDITION_WITH_CLEANUP(allocated_mem_ptr == nullptr, "Failed to allocate memory");
     auto rc = mem_utils->memory_set(allocated_mem_ptr, 0, total_size_in_bytes);
-    EXIT_ON_CONDITION_WITH_CLEANUP(rc != ReturnStatus::success, "Failed to set memory")
+    EXIT_ON_CONDITION_WITH_CLEANUP(rc != ReturnStatus::success, "Failed to set memory");
 
     /* Register memory */
 
     /** Retrieve device interface **/
     rmx_device_iface device_interface;
     status = rmx_retrieve_device_iface_ipv4(&device_interface, &m_local_address.sin_addr);
-    EXIT_ON_FAILURE(status, "Failed to get device")
+    EXIT_ON_FAILURE(status, "Failed to get device");
 
     /** Initialize memory region **/
     rmx_mem_region app_mem_region;
@@ -81,7 +81,7 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
 
     /** Register the memory **/
     status = rmx_register_memory(&app_mem_region, &mem_reg_params);
-    EXIT_ON_FAILURE(status, "Failed to register application memory")
+    EXIT_ON_FAILURE(status, "Failed to register application memory");
     rmx_mkey_id mkey = app_mem_region.mkey;
 
     /* Create streams */
@@ -102,7 +102,7 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
         rmx_input_set_entry_uniform_size(&stream_params, sub_block_id, m_app_settings->packet_payload_size);
 
         status = rmx_input_determine_mem_layout(&stream_params);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to determine memory layout")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to determine memory layout");
     }
 
     size_t data_stride_size_bytes;
@@ -119,7 +119,7 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
 
         /** Create the stream **/
         status = rmx_input_create_stream(&streams_params[index], &streams_id[index]);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to create stream");
     }
 
     /**
@@ -135,7 +135,7 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
 
     for (auto& stream_id : streams_id) {
         status = rmx_input_set_completion_moderation(stream_id, min_chunk_size, max_chunk_size, wait_timeout_next_chunk);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to set completion moderation")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to set completion moderation");
     }
 
     /* Attach network flows */
@@ -155,7 +155,7 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
 
         /** Attach the flow **/
         status = rmx_input_attach_flow(streams_id[index], &receive_flows[index]);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to attach flow")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to attach flow");
     }
 
     /* Initialize chunk handle */
@@ -178,11 +178,11 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
         for (auto& chunk_handle : chunk_handles) {
             /** Get next chunk of received data **/
             status = rmx_input_get_next_chunk(&chunk_handle);
-            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk")
+            EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to get next chunk");
 
             /** Process the chunk **/
             const rmx_input_completion* completion = rmx_input_get_chunk_completion(&chunk_handle);
-            EXIT_ON_CONDITION_WITH_CLEANUP(completion == nullptr, "Failed to get chunk completion")
+            EXIT_ON_CONDITION_WITH_CLEANUP(completion == nullptr, "Failed to get chunk completion");
 
             const uint8_t* chunk_ptr = reinterpret_cast<const uint8_t*>(rmx_input_get_completion_ptr(completion, sub_block_id));
             size_t chunk_size = rmx_input_get_completion_chunk_size(completion);
@@ -208,20 +208,20 @@ ReturnStatus RmxMemoryRegistrationReceiveDemoApp::operator()()
     for (size_t index = 0; index < num_of_streams; index++) {
         /* Detach network flow */
         status = rmx_input_detach_flow(streams_id[index], &receive_flows[index]);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to detach flow")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to detach flow");
 
         /* Destroy stream */
         status = rmx_input_destroy_stream(streams_id[index]);
-        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream")
+        EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to destroy stream");
     }
 
     /* Deregister memory */
     status = rmx_deregister_memory(&app_mem_region, &device_interface);
-    EXIT_ON_FAILURE(status, "Failed to deregister application memory")
+    EXIT_ON_FAILURE(status, "Failed to deregister application memory");
 
     /* Clean-up Rivermax library */
     status = rmx_cleanup();
-    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library")
+    EXIT_ON_FAILURE(status, "Failed to clean-up Rivermax library");
 
     return ReturnStatus::success;
 }
