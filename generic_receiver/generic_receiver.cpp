@@ -32,6 +32,10 @@
 #include "generic_receiver.h"
 #include "checksum_verifier.h"
 
+// Completion moderation parameters definition
+constexpr size_t RxStream::m_min_chunk_size;
+constexpr size_t RxStream::m_max_chunk_size;
+constexpr int RxStream::m_timeout_next_chunk;
 
 RxStream::RxStream(rmx_input_stream_params_type rx_type
                  , rmx_input_timestamp_format timestamp_format
