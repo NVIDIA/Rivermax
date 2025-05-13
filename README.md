@@ -81,9 +81,9 @@ Application List
 
 - [**generic_receiver**](generic_receiver/README.md) - A demo for a receiver application that uses Rivermax Generic API
 - [**rivermax_player**](rivermax_player/README.md) - A demo for a sender application that sends several streams of different types (e.g. video, audio, ancillary)
-- [**doca_rmax_rx_perf**](doca_rmax_rx_perf/README.md) - An RX performance measurement application to be used with the NVIDIA DOCA RMAX library.
-- [**rmax_ipo_receiver**](rmax_ipo_receiver/README.md) - A demo for receiver application that uses Inline Packet Ordering (IPO) feature of Rivermax library.
 - [**rmx_api_demo_apps**](rmx_api_demo_apps/README.md) - A set of demo applications that demonstrate the usage of Rivermax API.
+- **doca_rmax_rx_perf** - This application has been moved to the [NVIDIA DOCA SDK](https://developer.nvidia.com/networking/doca) and is now available as part of the DOCA reference applications package. You can find it at `/opt/mellanox/doca/applications/stream_receive_perf/` after installing the SDK, and its documentation in the [DOCA Stream Receive Performance Application Guide](https://docs.nvidia.com/doca/sdk/doca+stream+receive+performance+application+guide/index.html).
+- **rmax_ipo_receiver** - From now on, you can find this application in the [NVIDIA Rivermax Dev Kit](https://github.com/NVIDIA/rivermax-dev-kit) repository at `/source/apps`.
 
 Tuning
 --------------------
