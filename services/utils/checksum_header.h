@@ -1,5 +1,6 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: NVIDIA CORPORATION & AFFILIATES
+ * Copyright (c) 2022-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -15,18 +16,17 @@
  * limitations under the License.
  */
 
-#pragma once
-#include <cstddef>
+#ifndef _CHECKSUM_HEADER_H_
+#define _CHECKSUM_HEADER_H_
 
-namespace rivermax {
-namespace libs {
-
-template <typename T, typename B>
-bool is_bit_set(const T bitmap[], B bit) 
+/**
+ * A header that is used by the generic sender and receiver to
+ * perform sequence (for dropped packets) and checksum checking.
+ */
+struct ChecksumHeader
 {
-  constexpr auto entry_bit_size  = sizeof(T) * 8;
-  return (bitmap[bit / entry_bit_size] & (1ULL << (bit % entry_bit_size))) != 0;
-}
+    uint32_t sequence;
+    uint32_t checksum;
+};
 
-}
-}
+#endif // _CHECKSUM_HEADER_H_

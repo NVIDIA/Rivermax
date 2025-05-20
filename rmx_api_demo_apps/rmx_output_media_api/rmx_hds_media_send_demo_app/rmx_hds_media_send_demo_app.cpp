@@ -28,10 +28,10 @@
 #include <rivermax_api.h>
 
 #include "rmx_hds_media_send_demo_app.h"
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 #include "rt_threads.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 
 ReturnStatus RmxHDSMediaSendDemoApp::operator()()

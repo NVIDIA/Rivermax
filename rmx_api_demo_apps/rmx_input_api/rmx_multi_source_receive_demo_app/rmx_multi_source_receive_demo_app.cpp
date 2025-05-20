@@ -27,10 +27,10 @@
 #include <rivermax_api.h>
 
 #include "rmx_multi_source_receive_demo_app.h"
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 #include "rt_threads.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 
 void RmxMultiSSMReceiveDemoApp::add_cli_options()

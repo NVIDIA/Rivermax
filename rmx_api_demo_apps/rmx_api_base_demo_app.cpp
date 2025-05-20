@@ -26,9 +26,9 @@
 #include <rivermax_api.h>
 
 #include "rmx_api_base_demo_app.h"
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 
 constexpr uint16_t LOCAL_PORT_DEFAULT = 50000;
@@ -36,10 +36,10 @@ constexpr uint16_t LOCAL_PORT_DEFAULT = 50000;
 RmxAPIBaseDemoApp::RmxAPIBaseDemoApp(const std::string& app_description, const std::string& app_examples) :
     m_obj_init_status(ReturnStatus::obj_init_failure),
     m_app_settings(new AppSettings),
-    m_rmax_apps_lib(ral::lib::RmaxAppsLibFacade()),
-    m_cli_parser_manager(m_rmax_apps_lib.get_cli_parser_manager(
-        app_description + rmx_get_version_string(), app_examples, m_app_settings)),
-    m_signal_handler(m_rmax_apps_lib.get_signal_handler(true))
+    m_rivermax_dev_kit(rivermax::dev_kit::RivermaxDevKitFacade::get_instance()),
+    m_app_examples(app_examples),
+    m_app_description(app_description),
+    m_signal_handler(m_rivermax_dev_kit.get_signal_handler(true))
 {
     std::memset(&m_local_address, 0, sizeof(m_local_address));
 }
@@ -74,6 +74,7 @@ void RmxAPIBaseDemoApp::add_cli_options()
 
 void RmxAPIBaseDemoApp::initialize_common_default_app_settings()
 {
+    m_app_settings->init_default_values();
     m_app_settings->destination_ip = DESTINATION_IP_DEFAULT;
     m_app_settings->destination_port = DESTINATION_PORT_DEFAULT;
 }
@@ -94,6 +95,9 @@ ReturnStatus RmxAPIBaseDemoApp::initialize_address(const std::string& ip, uint16
 
 ReturnStatus RmxAPIBaseDemoApp::initialize(int argc, const char* argv[])
 {
+    m_cli_parser_manager = m_rivermax_dev_kit.get_cli_parser_manager(
+        m_app_description + " " + rmx_get_version_string(), m_app_examples, m_app_settings);
+
     ReturnStatus rc = m_cli_parser_manager->initialize();
     if (rc != ReturnStatus::success) {
         std::cerr << "Failed to initialize CLI manager" << std::endl;

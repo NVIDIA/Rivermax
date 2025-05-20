@@ -23,15 +23,10 @@ done in this method.
 All the applications in this directory are built using CMake. The following
 instructions are common for all applications.
 
-At first you need to download the latest Rivermax package from the
-[Rivermax Downloads](https://developer.nvidia.com/networking/rivermax-getting-started)
-page. Extract the `rmax_apps_lib` directory from this package somewhere (in our
-example the archive is extracted to the user home directory).
-
 From the application directory run the following commands:
 
 ```shell
-$ cmake -DCMAKE_BUILD_TYPE=Release -DRMAX_APPS_LIB=/home/user/rmax_apps_lib -B ./build
+$ cmake -DCMAKE_BUILD_TYPE=Release -B ./build
 $ cmake --build ./build --config Release --parallel
 ```
 

@@ -29,9 +29,9 @@
 
 #include <rivermax_api.h>
 
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 
 #define EXIT_ON_CONDITION_HELPER(condition, message, do_cleanup) \
@@ -152,11 +152,15 @@ protected:
     /* Application settings */
     std::shared_ptr<AppSettings> m_app_settings;
     /* Rivermax applications library facade */
-    ral::lib::RmaxAppsLibFacade m_rmax_apps_lib;
+    rivermax::dev_kit::RivermaxDevKitFacade& m_rivermax_dev_kit;
     /* Command line manager */
     std::shared_ptr<CLIParserManager> m_cli_parser_manager;
     /* Application signal handler */
     std::shared_ptr<SignalHandler> m_signal_handler;
+    /* Application description */
+    std::string m_app_description;
+    /* Usage example for the command line */
+    std::string m_app_examples;
     /* Local NIC address */
     sockaddr_in m_local_address;
 };

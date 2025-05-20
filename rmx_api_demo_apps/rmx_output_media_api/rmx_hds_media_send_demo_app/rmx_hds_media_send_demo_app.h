@@ -18,16 +18,16 @@
 #define RMX_API_DEMO_APPS_RMX_OUTPUT_MEDIA_API_RMX_HDS_MEDIA_SEND_DEMO_APP_RMX_HDS_MEDIA_SEND_DEMO_APP_H_
 
 #include "rmx_output_media_api_base.h"
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 
 constexpr const char* APP_DESCRIPTION = "NVIDIA Rivermax API Media Send Demo App With Header Data Split";
 constexpr const char* APP_EXAMPLES = \
     "Examples:\n"
-    "  1. rmx_hds_media_send_demo_app --local-ip 1.2.3.4 --stream-type 1080p60\n"
-    "  2. rmx_hds_media_send_demo_app --local-ip 1.2.3.4 --stream-type 1080p60 --dst-ip 231.1.2.3 --dst-port 60000";
+    "  1. rmx_hds_media_send_demo_app --local-ip 1.2.3.4\n"
+    "  2. rmx_hds_media_send_demo_app --local-ip 1.2.3.4 --dst-ip 231.1.2.3 --dst-port 60000";
 
 /**
  * @brief Rivermax API Media Send Demo Application With Header Data Split.

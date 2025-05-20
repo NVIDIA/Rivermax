@@ -28,10 +28,10 @@
 #include <rivermax_api.h>
 
 #include "rmx_memory_allocation_media_send_demo_app.h"
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 #include "rt_threads.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 
 ReturnStatus RmxMemoryAllocationMediaSendDemoApp::operator()()
@@ -49,7 +49,15 @@ ReturnStatus RmxMemoryAllocationMediaSendDemoApp::operator()()
     EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library");
 
     /* Allocate memory */
-    auto mem_allocator = m_rmax_apps_lib.get_memory_allocator(AllocatorType::Malloc, m_app_settings);
+
+    /**
+     * @note For this example, we use malloc allocator.
+     * To use another type of allocation, simply chose another @ref AllocatorType, such as HugePages, GPU, etc.
+     *
+     * When using GPU allocation, Rivermax will use GPUDirect mode seamlessly.
+     */
+    AllocatorType allocator_type = AllocatorType::Malloc;
+    auto mem_allocator = m_rivermax_dev_kit.get_memory_allocator(allocator_type, m_app_settings);
     auto mem_utils = mem_allocator->get_memory_utils();
     auto mem_alignment = get_cache_line_size();
 

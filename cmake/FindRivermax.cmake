@@ -90,10 +90,10 @@ endmacro()
 macro(validate_component _component)
   set(multiValueKeywords REQUIRED_VARS)
   cmake_parse_arguments(${_component} "" "" "${multiValueKeywords}" ${ARGN})
-  
+
   list(APPEND Rivermax_FIND_COMPONENTS ${_component})
   #set(Rivermax_FIND_REQUIRED_${_component} TRUE)
-  
+
   set(Rivermax_${_component}_FOUND TRUE)
 
   foreach(_item ${${_component}_REQUIRED_VARS})
@@ -111,7 +111,7 @@ endmacro()
 # Attempts to determine the version of the specified component and if its found
 # a corresponding STATUS message is printed.
 # This macro currently successfully finds versions only for libraries that follow
-# the conventional naming of distribution used by linux, i.e. 
+# the conventional naming of distribution used by linux, i.e.
 #   <lib filename>.<ext>.<major>.<minor>.<patch>
 #
 # \arg:_component       a name of the component
@@ -187,6 +187,12 @@ if (Rivermax_FOUND)
       VERSION ${Rivermax_VERSION}
     )
   endif()
+endif()
+
+if(Rivermax_FOUND AND NOT TARGET Rivermax::Include)
+    add_library(rivermax_include INTERFACE)
+    target_include_directories(rivermax_include INTERFACE "${Rivermax_INCLUDE_DIR}")
+    add_library(Rivermax::Include ALIAS rivermax_include)
 endif()
 
 cmake_policy(POP)

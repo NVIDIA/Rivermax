@@ -22,7 +22,6 @@ project(GenericReceiver)
 # Include common logic
 #
 include(ProjectCommon)
-include(RtThread)
 
 #------------------------------------------------------------------------------
 # Configure the executable
@@ -31,15 +30,14 @@ add_executable(generic_receiver)
 
 target_include_directories(generic_receiver PRIVATE
     .
-    ${UTILS_SOURCE_DIR}/
+    ${SERVICES_DIR}
 )
 
 target_sources(generic_receiver
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/generic_receiver.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/checksum_verifier.cpp
-        ${UTILS_SOURCE_DIR}/memory_allocator.cpp
 )
 
 find_package(Rivermax 1.51.6 REQUIRED)
-target_link_libraries(generic_receiver PRIVATE apps_common_base Rivermax::Rivermax Utils::RtThread)
+target_link_libraries(generic_receiver PRIVATE apps_common_base Rivermax::Rivermax)

@@ -25,6 +25,12 @@ option(RIVERMAX_ENABLE_CUDA     "Enables CUDA"   OFF)
 option(RIVERMAX_ENABLE_TEGRA    "Enables TEGRA"  OFF)
 
 #------------------------------------------------------------------------------
+# Internal build flags forwarded to rivermax-dev-kit
+#
+set(RMAX_CUDA  ${RIVERMAX_ENABLE_CUDA} CACHE BOOL "Enable CUDA in rivermax-dev-kit")
+set(RMAX_TEGRA ${RIVERMAX_ENABLE_TEGRA} CACHE BOOL "Enable TEGRA in rivermax-dev-kit")
+
+#------------------------------------------------------------------------------
 
 function(verify_compatibility _app_name)
     # Input parameters
@@ -41,13 +47,10 @@ function(verify_compatibility _app_name)
     if (APP_OS AND NOT "${CMAKE_SYSTEM_NAME}" IN_LIST APP_OS)
         message(FATAL_ERROR "'${_app_name}' doesn't support '${CMAKE_SYSTEM_NAME}'!")
         return()
-    endif()    
+    endif()
 endfunction()
 
 #------------------------------------------------------------------------------
-# Setup configuration
-find_package(Threads)
-
 if(RIVERMAX_ENABLE_CUDA)
     include(CheckLanguage)
     check_language(CUDA)
@@ -62,8 +65,6 @@ elseif(RIVERMAX_ENABLE_TEGRA)
     message(WARNING "Enabling of TEGRA requires CUDA!")
 endif()
 
-set(UTILS_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../util)
-
 #------------------------------------------------------------------------------
 # Compiler configuration
 
@@ -72,7 +73,7 @@ target_compile_features(app_compilation_flags INTERFACE cxx_std_11)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(MSVC)
-    target_compile_definitions(app_compilation_flags INTERFACE 
+    target_compile_definitions(app_compilation_flags INTERFACE
         _AMD64_ AMD64
         _UNICODE UNICODE
         _WINSOCK_DEPRECATED_NO_WARNINGS
@@ -90,47 +91,20 @@ target_compile_options(app_compilation_flags INTERFACE
 )
 
 #------------------------------------------------------------------------------
-# CUDA integration
-
-if (CMAKE_CUDA_COMPILER)
-    include(RtThread)
-    add_library(app_cuda_integration)
-    target_sources(app_cuda_integration
-        PRIVATE
-            ${UTILS_SOURCE_DIR}/gpu.cpp
-            ${UTILS_SOURCE_DIR}/cuda/checksum_kernel.cu
-    )
-    target_include_directories(app_cuda_integration
-        PUBLIC
-            ${UTILS_SOURCE_DIR}/cuda
-            ${Rivermax_INCLUDE_DIR}
-    )
-    target_compile_options(app_cuda_integration PUBLIC -DCUDA_ENABLED)
-    target_link_libraries(app_cuda_integration 
-        PRIVATE 
-            app_compilation_flags
-            Utils::RtThread
-        PUBLIC
-            CUDA::cuda_driver
-    )
-
-    if (RIVERMAX_ENABLE_TEGRA)
-        target_compile_options(app_compilation_flags INTERFACE -DTEGRA_ENABLED)
-    else()
-        target_link_libraries(app_cuda_integration PUBLIC CUDA::nvml)
-    endif()
-endif()
-
-#------------------------------------------------------------------------------
 # Common base for all applications
 
-add_library(apps_common_base INTERFACE)
-target_link_libraries(apps_common_base INTERFACE 
-    app_compilation_flags
-    Threads::Threads
-)
+include(AddRivermaxDevKit)
 
-if (CMAKE_CUDA_COMPILER)
-    target_link_libraries(apps_common_base INTERFACE app_cuda_integration)
+set(SERVICES_DIR ${CMAKE_CURRENT_LIST_DIR}/../services)
+if(NOT ${CMAKE_CURRENT_SOURCE_DIR} MATCHES ".*rmx_api_demo_apps.*")
+    add_subdirectory(${SERVICES_DIR} ${CMAKE_CURRENT_BINARY_DIR}/services)
 endif()
 
+add_library(apps_common_base INTERFACE)
+
+target_link_libraries(apps_common_base
+    INTERFACE
+        app_compilation_flags
+        rivermax-dev-kit-build
+        rivermax-app-services
+)

@@ -19,11 +19,6 @@ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake)
 project(RmxHDSReceiveDemoApp CXX)
 
 # ------------------------------------------------------------------------------
-# Setup rmax_apps_lib dependency
-#
-include(AddRmaxAppsLib)
-
-# ------------------------------------------------------------------------------
 # Include common logic
 #
 include(ProjectCommon)
@@ -39,7 +34,7 @@ target_include_directories(rmx_hds_receive_demo_app
     ${CMAKE_CURRENT_SOURCE_DIR}/../
 )
 
-target_link_libraries(rmx_hds_receive_demo_app PRIVATE rmax-base-app)
+target_link_libraries(rmx_hds_receive_demo_app PRIVATE rivermax-dev-kit)
 
 target_sources(rmx_hds_receive_demo_app
     PRIVATE

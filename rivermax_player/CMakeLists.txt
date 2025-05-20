@@ -22,7 +22,6 @@ project(RivermaxPlayer)
 # Include common logic
 #
 include(ProjectCommon)
-include(RtThread)
 
 #------------------------------------------------------------------------------
 # Configure the executable
@@ -38,7 +37,7 @@ endif()
 
 target_include_directories(rivermax_player PRIVATE
     .
-    ${UTILS_SOURCE_DIR}/
+    ${SERVICES_DIR}/
 )
 
 target_sources(rivermax_player
@@ -49,4 +48,4 @@ target_sources(rivermax_player
 include(FetchFFmpeg)
 find_package(Rivermax 1.51.6 REQUIRED)
 find_package(FFmpeg REQUIRED)
-target_link_libraries(rivermax_player PRIVATE apps_common_base Rivermax::Rivermax Utils::RtThread FFmpeg::FFmpeg)
+target_link_libraries(rivermax_player PRIVATE apps_common_base Rivermax::Rivermax FFmpeg::FFmpeg)

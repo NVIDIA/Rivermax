@@ -20,21 +20,9 @@
 #include <cinttypes>
 #include <chrono>
 #include <string>
-#include <unordered_set>
 
 #include "rmx_api_base_demo_app.h"
 
-constexpr size_t RTP_YUV_DEFAULT_PAYLOAD_SIZE = 1200;
-constexpr size_t RTP_HEADER_SIZE = 12 + 8;
-constexpr size_t HD_PACKETS_PER_FRAME_422_10B = 4320;
-constexpr const char* VIDEO_2110_20_1080p60 = "1080p60";
-constexpr const char* VIDEO_2110_20_2160p60 = "2160p60";
-constexpr uint16_t FHD_WIDTH = 1920;
-constexpr uint16_t FHD_HEIGHT = 1080;
-constexpr uint16_t UHD_HEIGHT = 2160;
-constexpr uint16_t UHD_WIDTH = 3840;
-constexpr size_t NS_IN_SEC = std::chrono::nanoseconds{ std::chrono::seconds{ 1 } }.count();
-const std::unordered_set<const char*> SUPPORTED_STREAMS = { VIDEO_2110_20_1080p60, VIDEO_2110_20_2160p60 };
 
 /**
  * @brief Base class for all output media API demo applications.

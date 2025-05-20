@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,23 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-project(rivermax_libs_processor)
+# ------------------------------------------------------------------------------
+# Setup rivermax-dev-kit dependency
+#
+include(FetchContent)
 
-add_library(${PROJECT_NAME} STATIC)
+set(RIVERMAX_DEV_KIT_HASH "3e4f3354f3bea1ad17bb94b95d53a35a8ced0fe0")
 
-target_sources(${PROJECT_NAME}
-  PRIVATE 
-    rivermax_affinity.cpp
-  PUBLIC
-    rivermax_affinity.h
+message(STATUS "Fetching rivermax-dev-kit")
+FetchContent_Declare(
+    rivermax-dev-kit
+    URL https://github.com/NVIDIA/rivermax-dev-kit/archive/${RIVERMAX_DEV_KIT_HASH}.zip
 )
-
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_LIST_DIR})
-
-target_link_libraries(${PROJECT_NAME}
-  PUBLIC rivermax_libs_utilities
-  PRIVATE rivermax_libs_config
-)
-
-string(TOLOWER "${CMAKE_SYSTEM_NAME}" os_specific_dir)
-add_subdirectory(${os_specific_dir})
+FetchContent_MakeAvailable(rivermax-dev-kit)

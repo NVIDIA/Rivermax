@@ -17,9 +17,9 @@
 #include <string>
 
 #include "rmx_output_generic_api_base.h"
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 
 RmxOutGenericAPIBaseDemoApp::RmxOutGenericAPIBaseDemoApp(const std::string& app_description, const std::string& app_examples) :

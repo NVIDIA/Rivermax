@@ -18,12 +18,12 @@
 #define RMX_API_DEMO_APPS_RMX_INPUT_API_RMX_MEMORY_REGISTRATION_RECEIVE_DEMO_APP_RMX_MEMORY_REGISTRATION_RECEIVE_DEMO_APP_H_
 
 #include "rmx_input_api_base.h"
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 
-constexpr const char* APP_DESCRIPTION = "NVIDIA Rivermax API Receive Demo App With Memory Registration ";
+constexpr const char* APP_DESCRIPTION = "NVIDIA Rivermax API Receive Demo App With Memory Registration";
 constexpr const char* APP_EXAMPLES = \
     "Examples:\n"
     "  1. rmx_memory_registration_receive_demo_app --local-ip 1.2.3.4\n"

@@ -18,9 +18,9 @@
 #define RMX_API_DEMO_APPS_RMX_INPUT_API_RMX_HDS_RECEIVE_DEMO_APP_RMX_HDS_RECEIVE_DEMO_APP_H_
 
 #include "rmx_input_api_base.h"
-#include "api/rmax_apps_lib_api.h"
+#include "rdk/rivermax_dev_kit.h"
 
-using namespace ral::lib::services;
+using namespace rivermax::dev_kit::services;
 
 constexpr size_t DEFAULT_PACKET_HEADER_SIZE = 20;
 
