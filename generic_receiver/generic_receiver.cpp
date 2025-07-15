@@ -131,7 +131,14 @@ bool RxStream::allocate_memory()
 
     // In all cases when memory allocated on Host memory, doing fallback to default memory allocation if failed
     // Note: header always allocated on Host memory for now
-    const bool allow_fallback = m_gpu != GPU_ID_INVALID ? false : true;
+    bool allow_fallback = true;
+    if (m_gpu != GPU_ID_INVALID) {
+        if (!gpu_verify_allocated_bar1_size(m_gpu, payload_length)) {
+            std::cerr << "Can't create stream, not enough BAR1 memory on GPU for payload data" << std::endl;
+            return false;
+        }
+        allow_fallback = false;
+    }
 
     // Allocate the payload buffer.
     void* payload_ptr = allocate_buffer(m_mem_payload_allocator, m_mem_payload_utils, payload_length, alignment, allow_fallback);
@@ -170,10 +177,6 @@ bool RxStream::create_stream()
 
     rmx_status status = rmx_input_create_stream(&m_stream_params, &m_stream_id);
     if (status != RMX_OK) {
-        if (m_gpu != GPU_ID_INVALID) {
-            const size_t total_allocated_size = m_buffer_elements * m_data_stride_size;
-            gpu_verify_allocated_bar1_size(m_gpu, total_allocated_size);
-        }
         std::cerr << "Failed to create Rivermax stream. Error: " << status << std::endl;
         return false;
     }
