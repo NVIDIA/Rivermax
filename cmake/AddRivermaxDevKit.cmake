@@ -18,7 +18,7 @@
 #
 include(FetchContent)
 
-set(RIVERMAX_DEV_KIT_HASH "3e4f3354f3bea1ad17bb94b95d53a35a8ced0fe0")
+set(RIVERMAX_DEV_KIT_HASH "ef340f769869d75080f63f91a0a1d7e36ccc4688")
 
 message(STATUS "Fetching rivermax-dev-kit")
 FetchContent_Declare(
