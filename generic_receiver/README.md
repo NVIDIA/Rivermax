@@ -32,8 +32,8 @@ purpose are disclaimed.
 From the `generic_receiver` directory run the following commands:
 
 ```shell
-$ cmake -B ./build
-$ cmake --build ./build
+$ cmake -B ./build -DCMAKE_BUILD_TYPE=Release
+$ cmake --build ./build --config Release --parallel
 ```
 
 The resulting binary can be found in directory `build`.
@@ -41,8 +41,8 @@ The resulting binary can be found in directory `build`.
 The application can be used to demonstrate GPUDirect. Use the following command line to build with [CUDA-Toolkit](https://docs.nvidia.com/cuda/) support:
 
 ```shell
-$ cmake -DRIVERMAX_ENABLE_CUDA=ON -B ./build
-$ cmake --build ./build
+$ cmake -B ./build -DCMAKE_BUILD_TYPE=Release -DRIVERMAX_ENABLE_CUDA=ON
+$ cmake --build ./build --config Release --parallel
 ```
 
 ## How to Run / Examples

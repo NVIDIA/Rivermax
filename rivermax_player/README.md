@@ -35,8 +35,8 @@ purpose are disclaimed.
 From the `rivermax_player` directory run the following commands:
 
 ```shell
-$ cmake -B ./build
-$ cmake --build ./build
+$ cmake -B ./build -DCMAKE_BUILD_TYPE=Release
+$ cmake --build ./build --config Release --parallel
 ```
 
 > If no FFmpeg is found on the system, it will be downloaded automatically into the `build` directory, the temporary directory with the build results

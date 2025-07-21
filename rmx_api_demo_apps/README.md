@@ -26,7 +26,7 @@ instructions are common for all applications.
 From the application directory run the following commands:
 
 ```shell
-$ cmake -DCMAKE_BUILD_TYPE=Release -B ./build
+$ cmake -B ./build -DCMAKE_BUILD_TYPE=Release
 $ cmake --build ./build --config Release --parallel
 ```
 
