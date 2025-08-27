@@ -22,6 +22,7 @@
 #include <string>
 
 #include "rmx_api_base_demo_app.h"
+#include "rdk/rivermax_dev_kit.h"
 
 
 /**
@@ -38,6 +39,8 @@ protected:
 
     virtual void add_cli_options() override;
     virtual void post_cli_parse_initialization() override;
+
+    std::shared_ptr<SMPTE_2110_20_MediaSettings> m_video_settings;
 };
 
 #endif // RMX_API_DEMO_APPS_RMX_OUTPUT_MEDIA_API_RMX_OUTPUT_MEDIA_API_BASE_H_

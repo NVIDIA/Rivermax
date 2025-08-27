@@ -37,9 +37,10 @@ RmxAPIBaseDemoApp::RmxAPIBaseDemoApp(const std::string& app_description, const s
     m_obj_init_status(ReturnStatus::obj_init_failure),
     m_app_settings(new AppSettings),
     m_rivermax_dev_kit(rivermax::dev_kit::RivermaxDevKitFacade::get_instance()),
-    m_app_examples(app_examples),
+    m_cli_parser_manager(nullptr),
+    m_signal_handler(m_rivermax_dev_kit.get_signal_handler(true)),
     m_app_description(app_description),
-    m_signal_handler(m_rivermax_dev_kit.get_signal_handler(true))
+    m_app_examples(app_examples)
 {
     std::memset(&m_local_address, 0, sizeof(m_local_address));
 }

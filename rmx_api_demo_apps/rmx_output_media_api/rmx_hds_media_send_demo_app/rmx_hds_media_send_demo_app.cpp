@@ -49,21 +49,21 @@ ReturnStatus RmxHDSMediaSendDemoApp::operator()()
     EXIT_ON_FAILURE(status, "Failed to initialize Rivermax library");
 
     /* Set memory layout */
-    std::vector<rmx_output_media_mem_block> mem_blocks(m_app_settings->num_of_memory_blocks);
+    std::vector<rmx_output_media_mem_block> mem_blocks(m_video_settings->requested_num_of_mem_blocks);
     rmx_output_media_init_mem_blocks(mem_blocks.data(), mem_blocks.size());
     constexpr size_t num_of_sub_blocks = 2; // HDS mode
     constexpr size_t header_block_index = 0;
     constexpr size_t payload_block_index = 1;
 
     size_t header_size = RTP_HEADER_SIZE;
-    size_t payload_size = (m_app_settings->packet_payload_size) - header_size;
+    size_t payload_size = (m_video_settings->packet_payload_size) - header_size;
     std::vector<uint16_t> header_sizes(
-        m_app_settings->num_of_packets_in_mem_block, header_size);
+        m_video_settings->packets_in_mem_block, header_size);
     std::vector<uint16_t> payload_sizes(
-        m_app_settings->num_of_packets_in_mem_block, payload_size);
+        m_video_settings->packets_in_mem_block, payload_size);
     for (auto& block : mem_blocks) {
         rmx_output_media_set_sub_block_count(&block, num_of_sub_blocks);
-        rmx_output_media_set_chunk_count(&block, m_app_settings->num_of_chunks_in_mem_block);
+        rmx_output_media_set_chunk_count(&block, m_video_settings->chunks_in_mem_block);
         rmx_output_media_set_packet_layout(&block, header_block_index, header_sizes.data());
         rmx_output_media_set_packet_layout(&block, payload_block_index, payload_sizes.data());
     }
@@ -81,11 +81,11 @@ ReturnStatus RmxHDSMediaSendDemoApp::operator()()
     rmx_output_media_init(&stream_params);
     rmx_output_media_assign_mem_blocks(&stream_params, mem_blocks.data(), mem_blocks.size());
     rmx_output_media_set_sdp(&stream_params, m_app_settings->media.sdp.c_str());
-    rmx_output_media_set_idx_in_sdp(&stream_params, m_app_settings->media.media_block_index);
-    rmx_output_media_set_packets_per_chunk(&stream_params, m_app_settings->num_of_packets_in_chunk);
+    rmx_output_media_set_idx_in_sdp(&stream_params, m_video_settings->sdp_media_block_index);
+    rmx_output_media_set_packets_per_chunk(&stream_params, m_video_settings->packets_in_chunk);
     rmx_output_media_set_stride_size(&stream_params, header_sub_block_id, header_stride_size);
     rmx_output_media_set_stride_size(&stream_params, payload_sub_block_id, data_stride_size);
-    rmx_output_media_set_packets_per_frame(&stream_params, m_app_settings->media.packets_in_frame_field);
+    rmx_output_media_set_packets_per_frame(&stream_params, m_video_settings->packets_in_frame_field);
 
     /** Create the stream **/
     rmx_stream_id stream_id;
@@ -106,8 +106,8 @@ ReturnStatus RmxHDSMediaSendDemoApp::operator()()
     uint64_t sent_mem_block_counter = 0;
     auto get_send_time_ns = [&]() { return static_cast<uint64_t>(
         start_send_time_ns
-        + m_app_settings->media.frame_field_time_interval_ns
-        * m_app_settings->media.frames_fields_in_mem_block
+        + m_video_settings->frame_field_time_interval_ns
+        * m_video_settings->frames_fields_in_mem_block
         * sent_mem_block_counter);
     };
     uint64_t commit_timestamp_ns = 0;
@@ -155,14 +155,14 @@ ReturnStatus RmxHDSMediaSendDemoApp::operator()()
             NOT_IN_USE(payload_ptr);
 
             /*** Commit the chunk ***/
-            first_chunk_in_frame = unlikely(chunk_in_frame_counter % m_app_settings->media.chunks_in_frame_field == 0);
+            first_chunk_in_frame = unlikely(chunk_in_frame_counter % m_video_settings->chunks_in_frame_field == 0);
             commit_timestamp_ns = first_chunk_in_frame ? send_time_ns : 0;
             do {
                 status = rmx_output_media_commit_chunk(&chunk_handle, commit_timestamp_ns);
             } while (unlikely(status == RMX_HW_SEND_QUEUE_IS_FULL));
             EXIT_ON_FAILURE_WITH_CLEANUP(status, "Failed to commit chunk");
 
-        } while (likely(status == RMX_OK && ++chunk_in_frame_counter < m_app_settings->media.chunks_in_frame_field));
+        } while (likely(status == RMX_OK && ++chunk_in_frame_counter < m_video_settings->chunks_in_frame_field));
         sent_mem_block_counter++;
     }
 

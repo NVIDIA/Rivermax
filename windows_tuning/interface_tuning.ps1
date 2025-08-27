@@ -27,7 +27,7 @@ param (
 $scriptVersion = "1.0.1"
 $separator = $("-" * 50)
 $scriptName = $myInvocation.MyCommand.Name # Extract just the script name.
-$invalidPreferenceIndex = 32767 # Invalid preference index. 
+$invalidPreferenceIndex = 32767 # Invalid preference index.
 
 $FlowControl = "FLOW CONTROL"
 $NumaSelection = "NUMA SELECTION"
@@ -50,20 +50,20 @@ SYNOPSIS
 
 SYNTAX
     $scriptName -h
-    $scriptName -c  -i <device interface>  [ -p {Both | Send | Receive; default=Both} ] 
-    $scriptName {-s|-r}  -i <device interface>  [-p {Both | Send | Receive; default=Both}]  -f <json file path>
+    $scriptName -c -i <device interface> [ -p {Both | Send | Receive; default=Both} ]
+    $scriptName {-s|-r} -i <device interface> [-p {Both | Send | Receive; default=Both}] -f <json file path>
 
 OPTIONS
     -h
         Display help message.
 
-    -c  -i <device interface>  [ -p {Both | Send | Receive; default=Both} ] 
+    -c -i <device interface> [ -p {Both | Send | Receive; default=Both} ]
         Check adapter compliance.
 
-    -s  -i <device interface>  [ -p {Both | Send | Receive; default=Both} ]  -f <json file path>
+    -s -i <device interface> [ -p {Both | Send | Receive; default=Both} ] -f <json file path>
         Save initial state to JSON file and tune requirements.
 
-    -r  -i <device interface>  [ -p {Both | Send | Receive; default=Both} ]  -f <json file path>
+    -r -i <device interface> [ -p {Both | Send | Receive; default=Both} ] -f <json file path>
         Restore initial settings.
 "@
 
@@ -74,10 +74,10 @@ Usage:
 $generalInfo
 
 Description:
-    This script allows you to tune network adapter settings. 
+    This script allows you to tune network adapter settings.
     You can check adapter compliance, save initial settings to a JSON file, tune requirements, or restore initial settings.
     You need to specify one of the defined actions above, provide an adapter name to perform the action on. You can also
-    specify the Profile {Both | Send | Receive; default=Both}, and a file path for saving/restoring original settings of the interface 
+    specify the Profile {Both | Send | Receive; default=Both}, and a file path for saving/restoring original settings of the interface
     as a JSON file.
 
 Getting Help:
@@ -92,10 +92,10 @@ $generalInfo
 
 DESCRIPTION
     - This script works only when given a valid NIC.
-    - If the [-p] is "Both" or "Send", the script will check, set and reset the selection of the closest NUMA to the 
+    - If the [-p] is "Both" or "Send", the script will check, set and reset the selection of the closest NUMA to the
       NIC, disabling flow control and local Loopback if it's present!
     - If the [-p] is "Receive", the script will only check, set and reset the flow control of the valid NIC given.
-    - If [-s] or [-r] is selected you will need to specify the path to the directory to 
+    - If [-s] or [-r] is selected you will need to specify the path to the directory to
       save/restore the original settings.
 
 RELATED LINKS
@@ -103,13 +103,13 @@ RELATED LINKS
 
 EXAMPLES
     To check adapter compliance for default profile "both":
-        $scriptName -c  -i "Ethernet 2"
+        $scriptName -c -i "Ethernet 2"
 
     To save initial state and tune requirements for both sending and receiving:
-        $scriptName -s  -i "Ethernet 2"  -p "Both"  -f "C:\Users\InterfaceOriginalSettings.json"
+        $scriptName -s -i "Ethernet 2" -p "Both" -f "C:\Users\InterfaceOriginalSettings.json"
 
     To restore adapter settings for both sending and receiving from json file in the current default directory:
-        $scriptName -r  -i "Ethernet" -f "C:\Users\InterfaceOriginalSettings.json"
+        $scriptName -r -i "Ethernet" -f "C:\Users\InterfaceOriginalSettings.json"
 
     To display this help message:
         $scriptName -h
@@ -142,7 +142,7 @@ function CheckWindowsVersion {
     $minWindowsVersion = 10
     $windowsVersion = [System.Environment]::OSVersion.Version
     if ($windowsVersion.Major -lt $minWindowsVersion) {
-        Terminate -ErrorMessage "Windows version $($windowsVersion) is not supported.`n" 
+        Terminate -ErrorMessage "Windows version $($windowsVersion) is not supported.`n"
     }
 }
 
@@ -180,7 +180,7 @@ function Write-ColorOutput($ForegroundColor) {
     } else {
         $input | Write-Output
     }
-    
+
     $host.UI.RawUI.ForegroundColor = $fc
 }
 
@@ -236,7 +236,7 @@ function CheckFlowControl {
 
 function SetFlowControl {
     param (
-        [string]$DisplayValue   
+        [string]$DisplayValue
     )
     PrintSectionTitle $FlowControl
     if (CheckWhetherIsVM) {
@@ -248,7 +248,7 @@ function SetFlowControl {
     PrintDevicePropertyNameFormatted -PropertyName $FlowControl
     PrintWithHighlight -Text "FLOW CONTROL AFTER:"
 
-    Set-NetAdapterAdvancedProperty -Name $adapterName -DisplayName $FlowControl -DisplayValue $DisplayValue 
+    Set-NetAdapterAdvancedProperty -Name $adapterName -DisplayName $FlowControl -DisplayValue $DisplayValue
     PrintDevicePropertyNameFormatted -PropertyName $FlowControl
 }
 
@@ -271,10 +271,10 @@ function SetNumaSelection {
     )
     PrintSectionTitle $NumaSelection
 
-    PrintWithHighlight -Text "NetAdapterRss BEFORE:"  
+    PrintWithHighlight -Text "NetAdapterRss BEFORE:"
     Get-NetAdapterRss -Name $adapterName
 
-    PrintWithHighlight -Text "NetAdapterRss AFTER:" 
+    PrintWithHighlight -Text "NetAdapterRss AFTER:"
     Set-NetAdapterRss -Name $adapterName -BaseProcessorGroup $baseProcessorGroup -MaxProcessorGroup $maxProcessorGroup -BaseProcessorNumber $baseProcessorNumber -MaxProcessorNumber $maxProcessorNumber -MaxProcessors $numaNodesCount -Profile Closest
     Get-NetAdapterRss -Name $adapterName
 }
@@ -283,7 +283,7 @@ function SnapshotNuma {
     $rssForNumaSelection = Get-NetAdapterRss -Name $adapterName
 
     $rssProcessorArray = $rssForNumaSelection.RssProcessorArray | Where-Object { $_.PreferenceIndex -ne $invalidPreferenceIndex }
-    
+
     $closestNumaDistance = ($rssProcessorArray | Sort-Object $_.PreferenceIndex | Select-Object -First 1).PreferenceIndex
 
     $closestNumaNodes = $rssProcessorArray | Sort-Object $_.PreferenceIndex | Where-Object { $_.PreferenceIndex -eq $closestNumaDistance } | Sort-Object $_.ProcessorNumber
@@ -320,12 +320,12 @@ function GetLocalPortLoopback {
 
 function CheckLocalPortLoopback {
     $localPortLoopbackStatus = GetLocalPortLoopback
-    
+
     if ($localPortLoopbackStatus -eq "Not present") {
         Write-Output "`nLocal Port Loopback current value: $localPortLoopbackStatus"
         return
     }
-    
+
     if ($localPortLoopbackStatus -ne "Disable Unicast and Multicast") {
         PrintWarnings -Text "`nLocal Port Loopback display value should be `"Disable Unicast and Multicast`"."
     }
@@ -335,7 +335,7 @@ function CheckLocalPortLoopback {
 
 function SetLocalPortLoopback {
     param (
-        [string]$DisplayValue   
+        [string]$DisplayValue
     )
 
     PrintSectionTitle $LocalPortLoopback
@@ -346,12 +346,12 @@ function SetLocalPortLoopback {
     PrintWithHighlight -Text "LOCAL PORT LOOPBACK AFTER:"
     $localPortLoopbackAfter = Get-NetAdapterAdvancedProperty -Name $adapterName -DisplayName $LoopbackPropertyName
 
-    if (-not [string]::IsNullOrWhiteSpace($localPortLoopbackAfter.DisplayValue)) {    
+    if (-not [string]::IsNullOrWhiteSpace($localPortLoopbackAfter.DisplayValue)) {
         Set-NetAdapterAdvancedProperty -Name $adapterName -DisplayName $LoopbackPropertyName -DisplayValue $DisplayValue
         PrintDevicePropertyNameFormatted -PropertyName $LoopbackPropertyName
     } else {
         Write-Output "No action taken. The original state of local loopback was 'Not Present'."
-    }   
+    }
 }
 
 function VerifyJSONPath {
@@ -381,7 +381,7 @@ function PrintSummary {
         [bool]$Receive
     )
     Write-Output "`n`n$separator`n"
-    
+
     if ($Receive) {
         if (CheckWhetherIsVM) {
             $summary = @"
@@ -437,13 +437,13 @@ function SaveJSON {
     $currentLocalPortLoopback = Get-NetAdapterAdvancedProperty -Name $adapterName -DisplayName $LoopbackPropertyName
 
     $interfaceOriginalSettings = @{
-        ScriptVersion         = $scriptVersion
-        AdapterName           = $adapterName
-        NumaSelectionRSS      = $rssForNumaSelection
-        FlowControl           = $currentFlowControl
-        LoopbackDisplayValue  = $currentLocalPortLoopback.DisplayValue
+        ScriptVersion        = $scriptVersion
+        AdapterName          = $adapterName
+        NumaSelectionRSS     = $rssForNumaSelection
+        FlowControl          = $currentFlowControl
+        LoopbackDisplayValue = $currentLocalPortLoopback.DisplayValue
     }
-        
+
     StoreOriginalSettings -InterfaceOriginalSettings $interfaceOriginalSettings
 }
 
@@ -451,9 +451,9 @@ function GetJSONOriginalSettings {
     if (-not (Test-Path "$jsonFilePath")) {
         Terminate -ErrorMessage "Error: $jsonFilePath file not found. Unable to restore initial state."
     }
-    
+
     $interfaceOriginalSettings = Get-Content -Raw -Path "$jsonFilePath" | ConvertFrom-Json
-    
+
     if ($interfaceOriginalSettings.ScriptVersion -ne $scriptVersion) {
         Terminate -ErrorMessage "Error: The version of the script that saved the initial state ($($interfaceOriginalSettings.ScriptVersion)) does not match the current script version ($scriptVersion). Restoration may not work as expected."
     }
@@ -476,10 +476,10 @@ function CheckCompliance {
         PrintSectionTitle $NumaSelection
         $numaRes = CheckNUMASelection
         Get-NetAdapterRss -Name $adapterName
-        
+
         PrintSectionTitle $FlowControl
         CheckFlowControl
-        
+
         PrintSectionTitle $LocalPortLoopback
         CheckLocalPortLoopback
         PrintSummary
@@ -490,7 +490,7 @@ function SaveInitialStateAndTune {
     $separator
     PrintWarnings -Text "Saving initial state and tuning requirements...`n"
 
-    SaveJSON 
+    SaveJSON
 
     if ($profile -eq "Receive") {
         SetFlowControl -DisplayValue "Disabled"
@@ -509,7 +509,7 @@ function RestoreSettings {
     PrintWarnings -Text "Restoring initial settings from $jsonFilePath...`n"
 
     $interfaceOriginalSettings = GetJSONOriginalSettings
-    
+
     if ($profile -eq "Receive") {
         SetFlowControl -DisplayValue $interfaceOriginalSettings.FlowControl
         PrintSummary -Receive $true
@@ -526,7 +526,7 @@ function VerifyAdapterName {
     if (-not $adapterName) {
         Terminate -ErrorMessage "Error: You must provide the adapter name you want to tune." -ShowUsage $true
     }
-    
+
     $adapterExists = Get-NetAdapter -Name $adapterName -ErrorAction SilentlyContinue
 
     if (-not $adapterExists) {
@@ -536,11 +536,11 @@ function VerifyAdapterName {
 
 function VerifyProfile {
     $validProfiles = @("Receive", "Send", "Both")
-    
-    if (-not $profile) { 
-        $profile = "Both" 
+
+    if (-not $profile) {
+        $profile = "Both"
     }
-    
+
     if ($profile.Trim() -notin $validProfiles) {
         Terminate -ErrorMessage "Error: Invalid value for Profile parameter. Valid options are 'Receive', 'Send', default is 'Both'."
     }
@@ -562,7 +562,7 @@ function VerifyInputs {
             $helpText
             return
         }
-        
+
         VerifyAdapterName
         VerifyProfile
     } catch {
@@ -574,7 +574,7 @@ function Main {
     param (
         [string[]]$ScriptArgs
     )
-    
+
     $checkCompliance = $c
     $saveInitialSettingsAndTune = $s
     $restoreSettings = $r
@@ -589,10 +589,10 @@ function Main {
         if ($checkCompliance) {
             CheckCompliance
         } elseif ($saveInitialSettingsAndTune) {
-            VerifyJSONPath -CheckForExistingFile:$true 
+            VerifyJSONPath -CheckForExistingFile:$true
             SaveInitialStateAndTune
         } elseif ($restoreSettings) {
-            VerifyJSONPath 
+            VerifyJSONPath
             RestoreSettings
         }
     } catch {

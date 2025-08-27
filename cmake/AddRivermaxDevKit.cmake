@@ -18,11 +18,9 @@
 #
 include(FetchContent)
 
-set(RIVERMAX_DEV_KIT_HASH "ef340f769869d75080f63f91a0a1d7e36ccc4688")
-
 message(STATUS "Fetching rivermax-dev-kit")
 FetchContent_Declare(
     rivermax-dev-kit
-    URL https://github.com/NVIDIA/rivermax-dev-kit/archive/${RIVERMAX_DEV_KIT_HASH}.zip
+    URL https://github.com/NVIDIA/rivermax-dev-kit/archive/refs/heads/main.zip
 )
 FetchContent_MakeAvailable(rivermax-dev-kit)

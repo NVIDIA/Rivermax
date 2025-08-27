@@ -32,7 +32,7 @@ $bestPerformanceVisualFX = 2
 $timeout = '00:00:30'
 $scriptName = $myInvocation.MyCommand.Name # Extract just the script name.
 $importFilePath = Join-Path $env:TEMP "RivermaxTuning-Import.inf"
-$exportFilePath = Join-Path $env:TEMP "RivermaxTuning-ExportedSecuritySettings.inf" 
+$exportFilePath = Join-Path $env:TEMP "RivermaxTuning-ExportedSecuritySettings.inf"
 $seceditSdbFilePath = Join-Path $env:TEMP "secedit.sdb"
 $powercfgExe = "powercfg.exe"
 $secEditExe = "secedit.exe"
@@ -60,7 +60,7 @@ SYNOPSIS
 SYNTAX
     $scriptName -h
     $scriptName -c
-    $scriptName {-s|-r}  -f <json file path>
+    $scriptName {-s|-r} -f <json file path>
 
 OPTIONS
     -h
@@ -76,9 +76,9 @@ OPTIONS
         Restore system settings to the initial state.
 
 Description:
-    This script allows you to tune system general settings. 
+    This script allows you to tune system general settings.
     You can check system compliance, save initial settings to a JSON file, tune requirements, or restore initial settings.
-    You need to specify one of the defined actions above, and provide a file path for saving/restoring original settings of the system 
+    You need to specify one of the defined actions above, and provide a file path for saving/restoring original settings of the system
     as a JSON file.
 "@
 
@@ -104,16 +104,16 @@ RELATED LINKS
 EXAMPLE
     To check system compliance:
         $scriptName -c
-    
+
     To Save initial state to JSON file and tune requirements:
         $scriptName -s -f "C:\Users\systemOriginalSettings.json"
 
     To Restore settings from JSON file:
-        $scriptName -s  -f "C:\Users\systemOriginalSettings.json"
+        $scriptName -r -f "C:\Users\systemOriginalSettings.json"
 
     To display this help message:
         $scriptName -h
-        
+
 "@
 
 function Write-ColorOutput($ForegroundColor) {
@@ -125,7 +125,7 @@ function Write-ColorOutput($ForegroundColor) {
     } else {
         $input | Write-Output
     }
-    
+
     $host.UI.RawUI.ForegroundColor = $fc
 }
 
@@ -144,7 +144,7 @@ function PrintWithHighlight {
     param(
         [string]$Text
     )
-    
+
     Write-ColorOutput Yellow "`n$Text `n"
 }
 
@@ -152,7 +152,7 @@ function PrintWarnings {
     param(
         [string]$Text
     )
-    
+
     Write-ColorOutput Red "$Text"
 }
 
@@ -215,7 +215,7 @@ function GetSearchIndexingStatus {
 function IsW32TimeRunning {
     if (Get-Service -Name 'w32time' -ErrorAction SilentlyContinue) {
         try {
-            $status = Get-Service -Name 'w32time' | Select-Object -ExpandProperty Status 
+            $status = Get-Service -Name 'w32time' | Select-Object -ExpandProperty Status
             return $status -eq 'Running'
         } catch {
             Terminate -ErrorMessage "Error: Unable to retrieve w32time status."
@@ -298,7 +298,7 @@ function UpdateSeLockMemoryPrivilege {
     if (-not ((FindExecutable -FileName $secEditExe) -and (FindExecutable -FileName $gpupdateExe))) {
         Terminate -ErrorMessage "Error: Can't Find Executable Files"
     }
-    
+
     # Import the updated configuration using SecEdit.exe.
     & $secEditExe /import /db $secEditExe /cfg $importFilePath
     & $secEditExe /configure /db $secEditExe
@@ -310,7 +310,7 @@ function GetSeLockMemoryPrivilegeMembers {
     if (-not (FindExecutable -FileName $secEditExe)) {
         Terminate -ErrorMessage "Error: Can't Find Executable File"
     }
-    
+
     $securitySettings = & $secEditExe /export /cfg $exportFilePath /areas USER_RIGHTS
 
     return Get-Content $exportFilePath | Select-String -Pattern "SeLockMemoryPrivilege.*=.*" | ForEach-Object { $_ -replace "SeLockMemoryPrivilege = " }
@@ -327,7 +327,7 @@ function TestLargePagesSupport {
     $SID = $userInfo.SID
     $SID = "*$SID" # Adding '*' in order to match exported security settings file.
     $SID = $SID.ToLower()
-    
+
     $usernameExists = $currentMembers -contains $SID -or $currentMembers -split ',' -contains $SID -or $currentMembers -contains $currentUsername -or $currentMembers -split ',' -contains $currentUsername
 
     return $usernameExists
@@ -345,7 +345,7 @@ function CheckWindowsVersion {
     $minWindowsVersion = 10
     $windowsVersion = [System.Environment]::OSVersion.Version
     if ($windowsVersion.Major -lt $minWindowsVersion) {
-        Terminate -ErrorMessage "Windows version $($windowsVersion) is not supported.`n" 
+        Terminate -ErrorMessage "Windows version $($windowsVersion) is not supported.`n"
     }
 }
 
@@ -358,7 +358,7 @@ function GetPowerSchemeGuid {
     if (-not (FindExecutable -FileName $powercfgExe)) {
         Terminate -ErrorMessage "Error: Can't Find Executable File"
     }
-    
+
     $queryResult = & $powercfgExe /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE
     $match = $queryResult | Select-String 'Power Scheme GUID:\s+([\S]+)'
 
@@ -382,12 +382,12 @@ function CheckPowerPlan {
     } else {
         PrintWarnings -Text "`nPower plan is not set to High Performance."
     }
-    
+
     if (-not (FindExecutable -FileName $powercfgExe)) {
         Terminate -ErrorMessage "Error: Can't Find Executable File"
     }
 
-    & $powercfgExe /l    
+    & $powercfgExe /l
 }
 
 function GetPagefileSize {
@@ -396,15 +396,15 @@ function GetPagefileSize {
 
 function CheckPagefileSize {
     PrintSectionTitle $PageSizeSectionTitle
-    
+
     $pagingFileSize = GetPagefileSize
     if ($pagingFileSize -eq $maxPagingFileSize) {
         Write-Output "`nPaging file size requirement is met. Current size: $pagingFileSize MB."
     } elseif ($pagingFileSize -eq $null) {
-        PrintWarnings -Text "`nPaging file size requirement is not met. Current size: 0 MB." 
+        PrintWarnings -Text "`nPaging file size requirement is not met. Current size: 0 MB."
     } else {
         PrintWarnings -Text "`nPaging file size requirement is not met. Current size: $pagingFileSize MB."
-    }    
+    }
 }
 
 function GetVisualEffectsVal {
@@ -416,7 +416,7 @@ function GetVisualEffectsVal {
 
 function CheckSystemVisualEffects {
     PrintSectionTitle $SystemVisualEffectsSectionTitle
-    
+
     Write-Output "`nVisualFXSetting Key Values:`n
 0 = 'Let Windows choose what is best for my computer'
 1 = 'Adjust for best appearance'
@@ -426,14 +426,14 @@ function CheckSystemVisualEffects {
     if ((GetVisualEffectsVal) -eq $bestPerformanceVisualFX) {
         Write-Output "`nVisual effect requirement is met."
     } else {
-        PrintWarnings -Text "`nVisual effect requirement is not met." 
+        PrintWarnings -Text "`nVisual effect requirement is not met."
     }
     Get-ItemProperty -Path $visualFXRegistryPath -Name $visualFXRegistryName
 }
 
 function CheckSearchIndexing {
     PrintSectionTitle $SearchIndexingSectionTitle
-    
+
     if (GetSearchIndexingStatus) {
         PrintWarnings -Text "`nSearch indexing requirement is not met."
     } else {
@@ -444,25 +444,25 @@ function CheckSearchIndexing {
 
 function CheckW32time {
     PrintSectionTitle $W32TimeSectionTitle
-    
+
     if (-not (IsW32TimeRegistered)) {
-        Write-Output "`nw32time is not registered." 
+        Write-Output "`nw32time is not registered."
         return
     }
 
-    PrintWarnings -Text "`nw32time is registered. Requirement is not met." 
-    
+    PrintWarnings -Text "`nw32time is registered. Requirement is not met."
+
     if (IsW32TimeRunning) {
         Write-Output "w32time is running."
         return
     }
-    Write-Output "w32time is not running." 
+    Write-Output "w32time is not running."
 }
 
 function CheckLargePagesSupport {
     PrintSectionTitle $LargePagesSupportSectionTitle
-    
-    $usernameExists = TestLargePagesSupport 
+
+    $usernameExists = TestLargePagesSupport
     if ($usernameExists) {
         Write-Output "`nLarge pages is Supported for this user."
         return
@@ -472,7 +472,7 @@ function CheckLargePagesSupport {
 
 function PrintSummary {
     Write-Output "`n`n$separator`n"
-    
+
     $summary = @"
 Summary:
 - Power Plan: $(if ($(GetPowerPlan) -eq $highPerformanceGUID) {'Tuned'} else {'Not Tuned'})
@@ -482,7 +482,7 @@ Summary:
 - W32time: $(if (!(IsW32TimeRegistered)) {'Tuned'} else {'Not Tuned'})
 - Large Pages Support: $(if (TestLargePagesSupport) {'Tuned'} else {'Not Tuned'})
 "@
-    
+
     $summary
     Write-Output "`n$separator`n`n"
 }
@@ -491,13 +491,13 @@ function SetPowerPlan {
     param (
         [string[]]$PowerPlanGUID
     )
-    
+
     PrintSectionTitle $PowerPlanSectionTitle
 
     if (-not (FindExecutable -FileName $powercfgExe)) {
         Terminate -ErrorMessage "Error: Can't Find Executable File"
     }
-        
+
     PrintWithHighlight -Text "POWER PLAN BEFORE:"
     & $powercfgExe /l
     & $powercfgExe /setactive $PowerPlanGUID
@@ -512,7 +512,7 @@ function SetPagefile {
         [bool]$AutoManagedPagefile
     )
     PrintSectionTitle $PageSizeSectionTitle
-    
+
     PrintWithHighlight -Text "PAGEFILE SIZE BEFORE:"
     $pagingFileSize = GetPagefileSize
     if ($pagingFileSize -eq $null) {
@@ -522,18 +522,18 @@ function SetPagefile {
     }
 
     SwitchAutoManagedPagefile -doEnable $false
-    
+
     SetPagefileSize $maxPagingFileSize
     PrintWithHighlight -Text "PAGEFILE SIZE AFTER:"
     if ($Restore) {
         if ($InitialPagingFileSize) {
             SetPagefileSize $InitialPagingFileSize
         }
-        
+
         if ($AutoManagedPagefile) {
             SwitchAutoManagedPagefile -doEnable $true
         }
-        
+
         $pagingFileSize = GetPagefileSize
         if ($pagingFileSize) {
             Get-CimInstance -ClassName Win32_PageFileSetting | Format-List
@@ -550,7 +550,7 @@ function SetSystemVisualEffects {
         [string]$VisualFXVal
     )
     PrintSectionTitle $SystemVisualEffectsSectionTitle
-    
+
     Write-Output "`nVisualFXSetting Key Values:
 0 = 'Let Windows choose what is best for my computer'
 1 = 'Adjust for best appearance'
@@ -561,7 +561,7 @@ function SetSystemVisualEffects {
         New-ItemProperty -Path $visualFXRegistryPath -Name $visualFXRegistryName -PropertyType $visualFXPropertyType
     }
     Get-ItemProperty -Path $visualFXRegistryPath -Name $visualFXRegistryName
-    
+
     Set-ItemProperty -Path $visualFXRegistryPath -Name $visualFXRegistryName -Value $VisualFXVal
     PrintWithHighlight -Text "SYSTEM VISUAL EFFECTS AFTER:"
 
@@ -603,15 +603,15 @@ function SetW32time {
         [string]$Isw32timeRunning
     )
     PrintSectionTitle $W32TimeSectionTitle
-    
-    PrintWithHighlight -Text "W32time BEFORE:" 
+
+    PrintWithHighlight -Text "W32time BEFORE:"
     $w32TimeRegistered = IsW32TimeRegistered
     if ($w32TimeRegistered) {
         Get-Service -Name 'w32time'
     } else {
         Write-Output "w32time is not registered."
     }
-    PrintWithHighlight -Text "W32time AFTER:" 
+    PrintWithHighlight -Text "W32time AFTER:"
     if ($Restore) {
         if ($Isw32timeRegistered) {
             RegisterW32Time
@@ -643,7 +643,7 @@ Revision=1
 [Profile Description]
 Description=Adding "(SeLockMemoryPrivilege)" right for user account
 [Privilege Rights]
-SeLockMemoryPrivilege = 
+SeLockMemoryPrivilege =
 '@ | Out-File -FilePath $importFilePath -Encoding Unicode
             Write-Output "File $importFilePath created successfully."
         }
@@ -658,8 +658,8 @@ function SetLargePagesSupport {
         [string]$CurrentMembers
     )
     PrintSectionTitle $LargePagesSupportSectionTitle
-    
-    CreateImportInfFile    
+
+    CreateImportInfFile
     PrintWithHighlight -Text "LARGE PAGES SUPPORT BEFORE:"
     TestLargePagesSupport
 
@@ -708,8 +708,8 @@ function StoreOriginalSettings {
 }
 
 function SaveJSON {
-    $currentPowerPlanGUID = GetPowerPlan   
-    
+    $currentPowerPlanGUID = GetPowerPlan
+
     $autoManagedPagefile = CheckAutoManagedPagefile
     $initialPagingFileSize = (GetPagefileSize) -as [int]
     $visualEffectsRegistry = GetVisualEffectsVal
@@ -717,7 +717,7 @@ function SaveJSON {
     $isw32timeRegistered = IsW32TimeRegistered
     $isW32timeRunning = IsW32TimeRunning
     $currentMembers = GetSeLockMemoryPrivilegeMembers
-    
+
     $systemOriginalSettings = @{
         ScriptVersion = $scriptVersion
         PowerPlanGUID = $currentPowerPlanGUID
@@ -736,19 +736,19 @@ function GetJSONOriginalSettings {
     if (-not (Test-Path "$jsonFilePath")) {
         Terminate -ErrorMessage "Error: $jsonFilePath file not found. Unable to restore initial state."
     }
-    
+
     $systemOriginalSettings = Get-Content -Raw -Path "$jsonFilePath" | ConvertFrom-Json
-    
+
     if ($systemOriginalSettings.ScriptVersion -ne $scriptVersion) {
         Terminate -ErrorMessage "Warning: The version of the script that saved the initial state ($($systemOriginalSettings.ScriptVersion)) does not match the current script version ($scriptVersion). Restoration may not work as expected."
-    }  
+    }
     return $systemOriginalSettings
 }
 
 function CheckCompliance {
-    $separator  
+    $separator
     PrintWarnings -Text "Checking requirements...`n"
-    
+
     CheckPowerPlan
     CheckPagefileSize
     CheckSystemVisualEffects
@@ -778,7 +778,7 @@ function SaveInitialStateAndTune {
 }
 
 function RestoreSettings {
-    $separator    
+    $separator
     PrintWarnings -Text "Restoring initial state from $jsonFilePath...`n"
 
     $systemOriginalSettings = GetJSONOriginalSettings
@@ -791,7 +791,7 @@ function RestoreSettings {
     SetLargePagesSupport -Restore $true -CurrentMembers $systemOriginalSettings.SeLockMemoryPrivilege
 
     PrintSummary
-    PrintWarnings -Text "ATTENTION: After disabling the various previously mentioned Services, reboot the machine, as some configuration-changes take affect only after a reboot." 
+    PrintWarnings -Text "ATTENTION: After disabling the various previously mentioned Services, reboot the machine, as some configuration-changes take affect only after a reboot."
 }
 
 function VerifyInputs {
@@ -807,7 +807,7 @@ function VerifyInputs {
         } elseif ($numOfProvidedSwitches -eq 0) {
             Terminate -ShowUsage $true
         }
-        
+
     } catch {
         Terminate -ErrorMessage "$_"
     }
@@ -830,7 +830,7 @@ function Main {
         if ($checkCompliance) {
             CheckCompliance
         } elseif ($saveInitialSettingsAndTune) {
-            VerifyJSONPath -CheckForExistingFile:$true 
+            VerifyJSONPath -CheckForExistingFile:$true
             SaveInitialStateAndTune
         } elseif ($restoreSettings) {
             VerifyJSONPath
