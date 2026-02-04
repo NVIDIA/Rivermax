@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: Copyright (c) 2024-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright (c) 2024-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: Apache-2.0
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -74,6 +74,15 @@ using namespace moodycamel;
 #endif
 
 #define RMAX_PLAYER_AFFINITY "RMAX_PLAYER_AFFINITY"
+
+namespace std {
+template<>
+struct default_delete<AVPacket> {
+    void operator()(AVPacket* p) const noexcept {
+        av_packet_free(&p);
+    }
+};
+}
 
 enum class rivermax_clock_types
 {
@@ -451,12 +460,41 @@ struct VideoReaderData: CpuAffinity
 struct AudioRmaxData: CpuAffinity
 {
     AudioRmaxData() = default;
+
+    ~AudioRmaxData() {
+        av_channel_layout_uninit(&ch_layout);
+    }
+
+    AudioRmaxData(const AudioRmaxData& other) : CpuAffinity(other) {
+        bit_rate = other.bit_rate;
+        sample_rate = other.sample_rate;
+        channels = other.channels;
+        frame_size = other.frame_size;
+        av_channel_layout_copy(&ch_layout, &other.ch_layout);
+        ptime_usec = other.ptime_usec;
+        payload_type = other.payload_type;
+        format = other.format;
+        sdp_path = other.sdp_path;
+        send_cb = other.send_cb;
+        send_cv = other.send_cv;
+        send_lock = other.send_lock;
+        sync_cv = other.sync_cv;
+        sync_lock = other.sync_lock;
+        eof_cv = other.eof_cv;
+        next_chunk_send_time_ns = other.next_chunk_send_time_ns;
+        timestamp_tick = other.timestamp_tick;
+        video_fps = other.video_fps;
+        eof_stream_counter = other.eof_stream_counter;
+        dscp = other.dscp;
+        bit_depth_in_bytes = other.bit_depth_in_bytes;
+    }
+
     AudioRmaxData(
         int64_t _bit_rate
         , int _sample_rate
         , int _channels
         , int _frame_size
-        , uint64_t _channel_layout
+        , const AVChannelLayout& _ch_layout
         , uint64_t _ptime_usec
         , int _payload_type
         , std::string &_sdp_path
@@ -476,7 +514,6 @@ struct AudioRmaxData: CpuAffinity
             , sample_rate(_sample_rate)
             , channels(_channels)
             , frame_size(_frame_size)
-            , channel_layout(_channel_layout)
             , ptime_usec(_ptime_usec)
             , payload_type(_payload_type)
             , sdp_path(_sdp_path)
@@ -491,13 +528,15 @@ struct AudioRmaxData: CpuAffinity
             , video_fps(_video_fps)
             , eof_stream_counter(_eof_stream_counter)
             , dscp(_dscp)
-    { }
+    {
+        av_channel_layout_copy(&ch_layout, &_ch_layout);
+    }
 
     int64_t bit_rate = 0;
     int sample_rate = 0;
     int channels = 0;
     int frame_size = 0;
-    uint64_t channel_layout = 0;
+    AVChannelLayout ch_layout = AV_CHANNEL_LAYOUT_STEREO;
     uint64_t ptime_usec = 0;
     int payload_type = 0;
     AVSampleFormat format = AV_SAMPLE_FMT_NONE;
@@ -576,7 +615,7 @@ struct AudioEncodeData
                 , _rmax_data.sample_rate
                 , _rmax_data.channels
                 , _rmax_data.frame_size
-                , _rmax_data.channel_layout
+                , _rmax_data.ch_layout
                 , _rmax_data.ptime_usec
                 , _rmax_data.payload_type
                 , _rmax_data.sdp_path
@@ -2196,8 +2235,7 @@ void encode_audio(AudioEncodeData audio_encode_data)
 
     p_audio_codec_context_pcm->bit_rate = audio_encode_data.rmax_data.bit_rate;
     p_audio_codec_context_pcm->sample_rate = 48000;
-    p_audio_codec_context_pcm->channel_layout = audio_encode_data.rmax_data.channel_layout;
-    p_audio_codec_context_pcm->channels = audio_encode_data.rmax_data.channels;
+    av_channel_layout_copy(&p_audio_codec_context_pcm->ch_layout, &audio_encode_data.rmax_data.ch_layout);
     p_audio_codec_context_pcm->sample_fmt = AV_SAMPLE_FMT_S32;
 
     if (avcodec_open2(p_audio_codec_context_pcm, p_audio_codec_pcm, nullptr) < 0) {
@@ -2205,7 +2243,8 @@ void encode_audio(AudioEncodeData audio_encode_data)
         return;
     }
 
-    SwrContext *swr = nullptr;
+    std::unique_ptr<SwrContext, std::function<void(SwrContext*)>> swr(nullptr,
+        [](SwrContext* p) { swr_free(&p); });
     while (likely(!exit_app()) && run_threads) {
         std::shared_ptr<queued_data> qdata;
         audio_encode_data.conv_cb->try_dequeue(qdata);
@@ -2233,34 +2272,42 @@ void encode_audio(AudioEncodeData audio_encode_data)
         if (48000 != qdata->frame->sample_rate || AV_SAMPLE_FMT_S32 != qdata->frame->format) {
             std::shared_ptr<AVFrame> new_av_frame{ av_frame_alloc(), AVFrameDeleter };
             if (!swr) {
-                swr = swr_alloc_set_opts(nullptr,  // we're allocating a new context
-                    qdata->frame->channel_layout, // out_ch_layout
+                SwrContext* swrp = nullptr;
+                int ret = swr_alloc_set_opts2(&swrp,  // we're allocating a new context
+                    &qdata->frame->ch_layout, // out_ch_layout
                     AV_SAMPLE_FMT_S32,  // out_sample_fmt
                     48000,  // out_sample_rate
-                    qdata->frame->channel_layout,  // in_ch_layout
+                    &qdata->frame->ch_layout,  // in_ch_layout
                     (AVSampleFormat)qdata->frame->format,  // in_sample_fmt
                     qdata->frame->sample_rate,  // in_sample_rate
                     0,  // log_offset
                     nullptr);  // log_ctx
+                if (ret < 0) {
+                    std::cerr << "failed to allocate SwrContext" << std::endl;
+                    return;
+                }
+                swr.reset(swrp);
+                ret = swr_init(swr.get());
+                if (ret < 0) {
+                    std::cerr << "failed to initialize SwrContext" << std::endl;
+                    return;
+                }
             }
 
             new_av_frame->format = AVSampleFormat::AV_SAMPLE_FMT_S32;
-            new_av_frame->channel_layout = qdata->frame->channel_layout;
+            av_channel_layout_copy(&new_av_frame->ch_layout, &qdata->frame->ch_layout);
             new_av_frame->sample_rate = qdata->frame->sample_rate;
-            new_av_frame->pkt_duration = qdata->frame->pkt_duration;
+            new_av_frame->duration = qdata->frame->duration;
 
-            if (swr_convert_frame(swr, new_av_frame.get(), qdata->frame.get())) {
-                std::cerr << "failed to convert audio frame with avresample_convert_frame" << std::endl;
+            if (swr_convert_frame(swr.get(), new_av_frame.get(), qdata->frame.get())) {
+                std::cerr << "failed to convert audio frame with swr_convert_frame" << std::endl;
                 return;
             }
 
             qdata->frame = new_av_frame;
         }
 
-        std::shared_ptr<AVPacket> pPacket{ new AVPacket, AVPacketDeleter };
-        av_init_packet(pPacket.get());
-        pPacket->data = nullptr; // packet data will be allocated by the encoder
-        pPacket->size = 0;
+        std::shared_ptr<AVPacket> pPacket(av_packet_alloc(), std::default_delete<AVPacket>());
 
         int ret = 0;
         while (likely(!exit_app()) && run_threads) {
@@ -2292,9 +2339,6 @@ void encode_audio(AudioEncodeData audio_encode_data)
         audio_encode_data.rmax_data.send_cv->notify_all();
     }
 
-    if (swr) {
-        swr_free(&swr);
-    }
     // Notify all other waiting threads that current thread is finished
     audio_encode_data.notity_all_cv();
 }
@@ -2328,12 +2372,9 @@ void read_stream(T rd)
 
     uint64_t frames = 0;
     while (likely(!exit_app()) && run_threads) {
-        std::unique_ptr<AVPacket, std::function<void(AVPacket*)>> packet{
-                        new AVPacket,
-                        [](AVPacket* p) { av_packet_unref(p); delete p; } };
+        std::unique_ptr<AVPacket> packet(av_packet_alloc());
         std::shared_ptr<queued_data> qdata = std::make_shared<queued_data>();
 
-        av_init_packet(packet.get());
         int response = av_read_frame(*rd.p_format_context.get(), packet.get());
         if (AVERROR_EOF == response) {
             std::cout << "EOF while reading " << rd.stream_name << " frame (" << frames << ")." << std::endl;
@@ -2540,7 +2581,7 @@ bool audio_process_file(const char *file_path, AudioRmaxData &audio_rmax_data,
     for (uint32_t i = 0; i < p_audio_format_context->nb_streams && !exit_app(); i++) {
         AVCodecParameters *p_local_codec_parameters = p_audio_format_context->streams[i]->codecpar;
         if (p_local_codec_parameters->codec_type == AVMEDIA_TYPE_AUDIO &&
-            p_local_codec_parameters->channels == media_data.channels_num) {
+            p_local_codec_parameters->ch_layout.nb_channels == media_data.channels_num) {
             audio_stream_index = i;
             p_audio_codec = avcodec_find_decoder(p_local_codec_parameters->codec_id);
             p_audio_codec_parameters = p_local_codec_parameters;
@@ -2550,7 +2591,7 @@ bool audio_process_file(const char *file_path, AudioRmaxData &audio_rmax_data,
 
     if (audio_stream_index >= 0) {
         char ch_layout[64] = {0};
-        av_get_channel_layout_string(ch_layout, sizeof(ch_layout), 0, p_audio_codec_parameters->channel_layout);
+        av_channel_layout_describe(&p_audio_codec_parameters->ch_layout, ch_layout, sizeof(ch_layout));
 
         int64_t duration_in_secounds = p_audio_format_context->duration/AV_TIME_BASE;
 
@@ -2558,7 +2599,7 @@ bool audio_process_file(const char *file_path, AudioRmaxData &audio_rmax_data,
             << "\n\t codac: " << p_audio_codec->long_name
             << "\n\t sample format: " << av_get_sample_fmt_name((AVSampleFormat)p_audio_codec_parameters->format)
             << "\n\t sample_rate: " << p_audio_codec_parameters->sample_rate << " Hz"
-            << "\n\t channels: " << p_audio_codec_parameters->channels
+            << "\n\t channels: " << p_audio_codec_parameters->ch_layout.nb_channels
             << "\n\t channel_layout: " << ch_layout
             << "\n\t stream index: " << audio_stream_index
             << "\n\t duration: "
@@ -2571,9 +2612,9 @@ bool audio_process_file(const char *file_path, AudioRmaxData &audio_rmax_data,
         //Init rmax_data
         audio_rmax_data.bit_rate = p_audio_codec_parameters->bit_rate;
         audio_rmax_data.sample_rate = p_audio_codec_parameters->sample_rate;
-        audio_rmax_data.channels = p_audio_codec_parameters->channels;
+        audio_rmax_data.channels = p_audio_codec_parameters->ch_layout.nb_channels;
         audio_rmax_data.frame_size = p_audio_codec_parameters->frame_size;
-        audio_rmax_data.channel_layout = p_audio_codec_parameters->channel_layout;
+        av_channel_layout_copy(&audio_rmax_data.ch_layout, &p_audio_codec_parameters->ch_layout);
         audio_rmax_data.format = (AVSampleFormat)p_audio_codec_parameters->format;
 
         //Init reader_data
