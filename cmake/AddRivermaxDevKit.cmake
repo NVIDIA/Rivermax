@@ -18,9 +18,11 @@
 #
 include(FetchContent)
 
+set(RDK_GIT_HASH "154edc3da714c2dbbce0eb7a111018b13925c797")
+
 message(STATUS "Fetching rivermax-dev-kit")
 FetchContent_Declare(
     rivermax-dev-kit
-    URL https://github.com/NVIDIA/rivermax-dev-kit/archive/refs/heads/main.zip
+    URL https://github.com/NVIDIA/rivermax-dev-kit/archive/${RDK_GIT_HASH}.zip
 )
 FetchContent_MakeAvailable(rivermax-dev-kit)
