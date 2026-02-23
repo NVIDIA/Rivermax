@@ -1,6 +1,10 @@
 NVIDIA Rivermax: _Tools, Apps & Code Samples_
 ===========
 
+> **Deprecation notice** — The apps and tools have been moved to new open-source repositories.
+> This branch is kept for legacy only (Rivermax SDK 1.80 + matching RDK).
+> See the [README](https://github.com/NVIDIA/rivermax/blob/main/README.md#nvidia-rivermax-repositories) on the `main` branch for current repositories, documentation, and links.
+
 [![GitHub license](https://img.shields.io/github/license/NVIDIA/nvidia-docker?style=flat-square)](https://github.com/nvidia/rivermax/blob/master/License.md)
 [![Rivermax SDK repository](https://img.shields.io/badge/Rivermax-SDK-blue?style=flat-square)](https://developer.nvidia.com/networking/rivermax-getting-started)
 

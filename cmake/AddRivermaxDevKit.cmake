@@ -18,7 +18,7 @@
 #
 include(FetchContent)
 
-set(RDK_GIT_HASH "154edc3da714c2dbbce0eb7a111018b13925c797")
+set(RDK_GIT_HASH "8b88d4b1f4949c4e6fcf8997cefcc443bca8cb74")
 
 message(STATUS "Fetching rivermax-dev-kit")
 FetchContent_Declare(
